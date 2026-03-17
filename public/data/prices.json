@@ -1,0 +1,18 @@
+{
+  "latest": {
+    "gold": 2935.00,
+    "silver": 32.80,
+    "platinum": 985.00,
+    "palladium": 955.00,
+    "timestamp": "2026-03-16T00:00:00Z"
+  },
+  "history": [
+    {
+      "date": "2026-03-16",
+      "gold": 2935.00,
+      "silver": 32.80,
+      "platinum": 985.00,
+      "palladium": 955.00
+    }
+  ]
+}
