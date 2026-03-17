@@ -1,18 +1,25 @@
 {
   "latest": {
-    "gold": 2935.00,
-    "silver": 32.80,
-    "platinum": 985.00,
-    "palladium": 955.00,
-    "timestamp": "2026-03-16T00:00:00Z"
+    "gold": 0,
+    "silver": 0.01,
+    "platinum": 0,
+    "palladium": 0,
+    "timestamp": "2026-03-17T14:50:32.815Z"
   },
   "history": [
     {
       "date": "2026-03-16",
-      "gold": 2935.00,
-      "silver": 32.80,
-      "platinum": 985.00,
-      "palladium": 955.00
+      "gold": 2935,
+      "silver": 32.8,
+      "platinum": 985,
+      "palladium": 955
+    },
+    {
+      "date": "2026-03-17",
+      "gold": 0,
+      "silver": 0.01,
+      "platinum": 0,
+      "palladium": 0
     }
   ]
 }
