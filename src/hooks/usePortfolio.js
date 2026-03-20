@@ -1,34 +1,152 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 
-const STORAGE_KEY = 'metal-stacker-portfolio';
+const LOCAL_STORAGE_KEY = 'metal-stacker-portfolio';
+const MIGRATED_KEY = 'metal-stacker-migrated';
 
-export function usePortfolio() {
-  const [holdings, setHoldings] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
+export function usePortfolio(user) {
+  const [holdings, setHoldings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch holdings from Supabase
+  const fetchHoldings = useCallback(async () => {
+    if (!user) {
+      setHoldings([]);
+      setLoading(false);
+      return;
     }
-  });
 
+    const { data, error } = await supabase
+      .from('holdings')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: true });
+
+    if (!error && data) {
+      setHoldings(
+        data.map((row) => ({
+          id: row.id,
+          metal: row.metal,
+          type: row.type,
+          description: row.description || '',
+          quantity: Number(row.quantity),
+          costPerOz: Number(row.cost_per_oz),
+          purchaseDate: row.purchase_date,
+          imageUrl: row.image_url || '',
+          status: row.status || 'active',
+        })),
+      );
+    }
+    setLoading(false);
+  }, [user]);
+
+  // Migrate localStorage holdings to Supabase on first login
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(holdings));
-  }, [holdings]);
+    if (!user) return;
 
-  const addHolding = (holding) => {
-    setHoldings((prev) => [...prev, { ...holding, id: crypto.randomUUID() }]);
+    const alreadyMigrated = localStorage.getItem(MIGRATED_KEY);
+    if (alreadyMigrated) {
+      fetchHoldings();
+      return;
+    }
+
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const localHoldings = raw ? JSON.parse(raw) : [];
+
+    if (localHoldings.length > 0) {
+      const rows = localHoldings.map((h) => ({
+        user_id: user.id,
+        metal: h.metal,
+        type: h.type,
+        description: h.description || '',
+        quantity: h.quantity,
+        cost_per_oz: h.costPerOz,
+        purchase_date: h.purchaseDate || null,
+      }));
+
+      supabase
+        .from('holdings')
+        .insert(rows)
+        .then(({ error }) => {
+          if (!error) {
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+            localStorage.setItem(MIGRATED_KEY, 'true');
+          }
+          fetchHoldings();
+        });
+    } else {
+      localStorage.setItem(MIGRATED_KEY, 'true');
+      fetchHoldings();
+    }
+  }, [user, fetchHoldings]);
+
+  const addHolding = async (holding) => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('holdings')
+      .insert({
+        user_id: user.id,
+        metal: holding.metal,
+        type: holding.type,
+        description: holding.description || '',
+        quantity: holding.quantity,
+        cost_per_oz: holding.costPerOz,
+        purchase_date: holding.purchaseDate || null,
+        image_url: holding.imageUrl || '',
+        status: 'active',
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      const newHolding = {
+        id: data.id,
+        metal: data.metal,
+        type: data.type,
+        description: data.description || '',
+        quantity: Number(data.quantity),
+        costPerOz: Number(data.cost_per_oz),
+        purchaseDate: data.purchase_date,
+        imageUrl: data.image_url || '',
+        status: data.status || 'active',
+      };
+      setHoldings((prev) => [...prev, newHolding]);
+      return newHolding;
+    }
+    return null;
   };
 
-  const removeHolding = (id) => {
-    setHoldings((prev) => prev.filter((h) => h.id !== id));
+  const removeHolding = async (id) => {
+    if (!user) return;
+
+    const { error } = await supabase.from('holdings').delete().eq('id', id);
+
+    if (!error) {
+      setHoldings((prev) => prev.filter((h) => h.id !== id));
+    }
   };
 
-  const editHolding = (id, updates) => {
-    setHoldings((prev) =>
-      prev.map((h) => (h.id === id ? { ...h, ...updates } : h)),
-    );
+  const editHolding = async (id, updates) => {
+    if (!user) return;
+
+    const row = {};
+    if (updates.metal !== undefined) row.metal = updates.metal;
+    if (updates.type !== undefined) row.type = updates.type;
+    if (updates.description !== undefined) row.description = updates.description;
+    if (updates.quantity !== undefined) row.quantity = updates.quantity;
+    if (updates.costPerOz !== undefined) row.cost_per_oz = updates.costPerOz;
+    if (updates.purchaseDate !== undefined) row.purchase_date = updates.purchaseDate;
+    if (updates.imageUrl !== undefined) row.image_url = updates.imageUrl;
+
+    const { error } = await supabase.from('holdings').update(row).eq('id', id);
+
+    if (!error) {
+      setHoldings((prev) =>
+        prev.map((h) => (h.id === id ? { ...h, ...updates } : h)),
+      );
+    }
   };
 
-  return { holdings, addHolding, removeHolding, editHolding };
+  return { holdings, loading, addHolding, removeHolding, editHolding };
 }

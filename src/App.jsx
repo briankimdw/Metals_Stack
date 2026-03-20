@@ -1,15 +1,27 @@
 import { useState, useMemo } from 'react';
+import { useAuth } from './context/AuthContext';
 import { usePortfolio } from './hooks/usePortfolio';
+import { useTransactions } from './hooks/useTransactions';
 import { usePrices } from './hooks/usePrices';
 import { METALS, formatCurrency, formatPercent } from './utils/constants';
+import { CoinThumbnail } from './components/CoinArt';
 import MetalStack from './components/MetalStack';
 import Charts from './components/Charts';
 import AddModal from './components/AddModal';
+import SellModal from './components/SellModal';
+import TradeModal from './components/TradeModal';
+import TransactionHistory from './components/TransactionHistory';
+import Login from './components/Login';
 
 export default function App() {
-  const { holdings, addHolding, removeHolding } = usePortfolio();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { holdings, addHolding, removeHolding, editHolding } = usePortfolio(user);
+  const { transactions, createBuyTransaction, createSellTransaction, createTradeTransaction, fetchTransactions } = useTransactions(user);
   const { prices, loading, lastUpdated, fetchPrices } = usePrices();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showTradeModal, setShowTradeModal] = useState(false);
+  const [sellHolding, setSellHolding] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const metalSummaries = useMemo(() => {
     const summaries = {};
@@ -38,6 +50,46 @@ export default function App() {
     return { totalValue, totalCost, totalPnl, totalPnlPercent };
   }, [metalSummaries]);
 
+  const handleAddHolding = async (holding) => {
+    const created = await addHolding(holding);
+    if (created) {
+      await createBuyTransaction(created.id);
+    }
+    setShowAddModal(false);
+  };
+
+  const handleSell = async (holdingId, sellPrice, notes) => {
+    const success = await createSellTransaction(holdingId, sellPrice, notes);
+    if (success) {
+      // Refresh holdings to remove the sold item
+      setSellHolding(null);
+      // Force re-fetch by reloading
+      window.location.reload();
+    }
+    return success;
+  };
+
+  const handleTrade = async (outIds, newHolding, cashAdded, notes) => {
+    const result = await createTradeTransaction(outIds, newHolding, cashAdded, notes);
+    if (result) {
+      setShowTradeModal(false);
+      window.location.reload();
+    }
+    return result;
+  };
+
+  if (authLoading) {
+    return (
+      <div className="app" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
+
   return (
     <div className="app">
       {/* Header */}
@@ -50,7 +102,7 @@ export default function App() {
           <div className="price-status">
             <span className={`price-dot ${lastUpdated ? '' : 'stale'}`} />
             {loading
-              ? 'Updating prices…'
+              ? 'Updating prices...'
               : lastUpdated
                 ? `Updated ${new Date(lastUpdated).toLocaleTimeString()}`
                 : 'Using default prices'}
@@ -59,8 +111,22 @@ export default function App() {
             ↻ Refresh
           </button>
           <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-            + Add Investment
+            + Add
           </button>
+          {holdings.length > 0 && (
+            <>
+              <button className="btn btn-trade-btn" onClick={() => setShowTradeModal(true)}>
+                ⇄ Trade
+              </button>
+            </>
+          )}
+          <button className="btn" onClick={() => setShowHistory((v) => !v)}>
+            {showHistory ? 'Hide History' : 'History'}
+          </button>
+          <div className="header-user">
+            <span className="header-email">{user.email}</span>
+            <button className="btn btn-sm" onClick={signOut}>Sign Out</button>
+          </div>
         </div>
       </header>
 
@@ -143,7 +209,7 @@ export default function App() {
                     <tr key={h.id}>
                       <td>
                         <div className="holding-metal">
-                          <span className="holding-metal-dot" style={{ background: metal.color }} />
+                          <CoinThumbnail imageUrl={h.imageUrl} metal={h.metal} size={28} />
                           {metal.name}
                         </div>
                       </td>
@@ -159,9 +225,14 @@ export default function App() {
                         </span>
                       </td>
                       <td>
-                        <button className="btn btn-sm btn-danger" onClick={() => removeHolding(h.id)}>
-                          ✕
-                        </button>
+                        <div className="holding-actions">
+                          <button className="btn btn-sm btn-sell-sm" onClick={() => setSellHolding(h)}>
+                            Sell
+                          </button>
+                          <button className="btn btn-sm btn-danger" onClick={() => removeHolding(h.id)}>
+                            ✕
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -170,6 +241,14 @@ export default function App() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Transaction History */}
+      {showHistory && (
+        <TransactionHistory
+          transactions={transactions}
+          onClose={() => setShowHistory(false)}
+        />
       )}
 
       {/* Empty State */}
@@ -192,11 +271,28 @@ export default function App() {
       {showAddModal && (
         <AddModal
           onClose={() => setShowAddModal(false)}
-          onSave={(holding) => {
-            addHolding(holding);
-            setShowAddModal(false);
-          }}
+          onSave={handleAddHolding}
           prices={prices}
+        />
+      )}
+
+      {/* Sell Modal */}
+      {sellHolding && (
+        <SellModal
+          holding={sellHolding}
+          prices={prices}
+          onClose={() => setSellHolding(null)}
+          onSell={handleSell}
+        />
+      )}
+
+      {/* Trade Modal */}
+      {showTradeModal && (
+        <TradeModal
+          holdings={holdings}
+          prices={prices}
+          onClose={() => setShowTradeModal(false)}
+          onTrade={handleTrade}
         />
       )}
     </div>

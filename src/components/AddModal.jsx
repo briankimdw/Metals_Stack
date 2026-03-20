@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { METALS, FORM_TYPES } from '../utils/constants';
+import { getCatalogEntry } from '../utils/coinCatalog';
+import ImagePicker from './ImagePicker';
 
 export default function AddModal({ onClose, onSave, editing, prices }) {
   const [form, setForm] = useState({
@@ -9,6 +11,7 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
     quantity: editing?.quantity ?? '',
     costPerOz: editing?.costPerOz ?? '',
     purchaseDate: editing?.purchaseDate || new Date().toISOString().split('T')[0],
+    imageUrl: editing?.imageUrl || '',
   });
 
   const handleSubmit = (e) => {
@@ -22,6 +25,23 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
   };
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleImageChange = (imageUrl) => {
+    set('imageUrl', imageUrl);
+    // Auto-fill from catalog if a catalog image is selected
+    if (imageUrl.startsWith('catalog:')) {
+      const entry = getCatalogEntry(imageUrl.slice(8));
+      if (entry) {
+        setForm((prev) => ({
+          ...prev,
+          imageUrl,
+          metal: entry.metal,
+          type: entry.type,
+          description: prev.description || entry.name,
+        }));
+      }
+    }
+  };
 
   const qty = parseFloat(form.quantity) || 0;
   const cost = parseFloat(form.costPerOz) || 0;
@@ -109,6 +129,12 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
                 onChange={(e) => set('purchaseDate', e.target.value)}
               />
             </div>
+
+            <ImagePicker
+              metal={form.metal}
+              value={form.imageUrl}
+              onChange={handleImageChange}
+            />
 
             {qty > 0 && cost > 0 && (
               <div className="form-preview">
