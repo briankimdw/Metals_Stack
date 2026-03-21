@@ -1,12 +1,9 @@
-// Vercel serverless function — fetches live metal prices once per day
-// and caches via Cache-Control headers
+// Vercel serverless function — fetches live metal prices from metalpriceapi.com
+// Cached for 24 hours via Cache-Control headers
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
-
-  // Cache for 24 hours on Vercel's edge and in the browser
   res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=3600');
 
   const apiKey = process.env.METALS_API_KEY;
@@ -16,7 +13,7 @@ export default async function handler(req, res) {
 
   try {
     const response = await fetch(
-      `https://api.metals.dev/v1/latest?api_key=${apiKey}&currency=USD&unit=toz`
+      `https://api.metalpriceapi.com/v1/latest?api_key=${apiKey}&base=USD&currencies=XAU,XAG,XPT,XPD`
     );
 
     if (!response.ok) {
@@ -26,14 +23,18 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // metals.dev returns: { status: "success", metals: { gold: 2935.12, silver: 32.80, ... } }
-    const metals = data.metals || {};
+    if (!data.success) {
+      return res.status(500).json({ error: data.error || 'API returned failure' });
+    }
+
+    // metalpriceapi returns USDXAU = price of 1 troy oz of gold in USD
+    const rates = data.rates || {};
 
     const prices = {
-      gold: metals.gold || null,
-      silver: metals.silver || null,
-      platinum: metals.platinum || null,
-      palladium: metals.palladium || null,
+      gold: rates.USDXAU || null,
+      silver: rates.USDXAG || null,
+      platinum: rates.USDXPT || null,
+      palladium: rates.USDXPD || null,
       timestamp: new Date().toISOString(),
     };
 
