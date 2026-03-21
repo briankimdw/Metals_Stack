@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { CapybaraWithGold } from './CapybaraMascot';
 
 export default function Login() {
   const { signIn, signUp, signInWithGoogle } = useAuth();
@@ -32,10 +33,10 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <StackIcon />
+          <CapybaraWithGold size={140} />
           <h1>Metal Stacker</h1>
           <p className="login-subtitle">
-            {isSignUp ? 'Create an account' : 'Sign in to your account'}
+            {isSignUp ? 'Create your account' : 'Welcome back, stacker!'}
           </p>
         </div>
 
@@ -67,7 +68,7 @@ export default function Login() {
             />
           </div>
           <button className="btn btn-primary login-btn" type="submit" disabled={loading}>
-            {loading ? 'Please wait…' : isSignUp ? 'Sign Up' : 'Sign In'}
+            {loading ? 'Please wait...' : isSignUp ? 'Sign Up' : 'Sign In'}
           </button>
         </form>
 
@@ -96,27 +97,6 @@ export default function Login() {
         </p>
       </div>
     </div>
-  );
-}
-
-function StackIcon() {
-  return (
-    <svg className="login-icon" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="4" y="22" width="28" height="6" rx="2" fill="url(#lg1)" />
-      <rect x="6" y="15" width="24" height="6" rx="2" fill="url(#lg2)" />
-      <rect x="8" y="8" width="20" height="6" rx="2" fill="url(#lg3)" />
-      <defs>
-        <linearGradient id="lg1" x1="4" y1="22" x2="32" y2="28" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FFD700" /><stop offset="1" stopColor="#B8860B" />
-        </linearGradient>
-        <linearGradient id="lg2" x1="6" y1="15" x2="30" y2="21" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FFE44D" /><stop offset="1" stopColor="#DAA520" />
-        </linearGradient>
-        <linearGradient id="lg3" x1="8" y1="8" x2="28" y2="14" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FFF8DC" /><stop offset="1" stopColor="#FFD700" />
-        </linearGradient>
-      </defs>
-    </svg>
   );
 }
 

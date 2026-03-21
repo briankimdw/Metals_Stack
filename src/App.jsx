@@ -11,6 +11,7 @@ import TradeModal from './components/TradeModal';
 import HoldingDetail from './components/HoldingDetail';
 import TransactionHistory from './components/TransactionHistory';
 import Login from './components/Login';
+import { CapybaraLogo, CapybaraWave, CapybaraSleeping } from './components/CapybaraMascot';
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -156,8 +157,9 @@ export default function App() {
   if (authLoading) {
     return (
       <div className="app loading-screen">
+        <CapybaraSleeping size={100} />
         <div className="loading-spinner" />
-        <p>Loading your portfolio...</p>
+        <p>Waking up your portfolio...</p>
       </div>
     );
   }
@@ -171,7 +173,7 @@ export default function App() {
       {/* Header */}
       <header className="header">
         <div className="header-brand">
-          <StackIcon />
+          <CapybaraLogo size={36} />
           <h1>Metal Stacker</h1>
         </div>
         <nav className="header-nav">
@@ -410,10 +412,10 @@ export default function App() {
       {holdings.length === 0 && (
         <div className="empty-state">
           <div className="empty-state-icon">
-            <StackIcon large />
+            <CapybaraWave size={140} />
           </div>
-          <h3>Start Building Your Stack</h3>
-          <p>Track your precious metals portfolio with real-time spot prices, P/L analytics, and full transaction history.</p>
+          <h3>Hey there, stacker!</h3>
+          <p>Ready to track your precious metals? Add your first coin, bar, or round and watch your stack grow!</p>
           <button
             className="btn btn-primary btn-lg"
             onClick={() => setShowAddModal(true)}
