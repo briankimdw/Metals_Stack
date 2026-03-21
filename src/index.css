@@ -769,6 +769,146 @@ body {
 .confirm-item-detail { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; font-weight: 600; }
 .confirm-warning { font-size: 12px; color: var(--red); font-weight: 600; }
 
+/* ===== FOLDERS ===== */
+.folder-tabs {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-bottom: 14px; padding-bottom: 10px;
+}
+.folder-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; font-size: 12px; font-weight: 600;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-muted);
+  cursor: pointer; font-family: inherit; transition: all 0.12s;
+}
+.folder-tab:hover { border-color: var(--border-light); color: var(--text-secondary); }
+.folder-tab.active {
+  background: rgba(196,149,106,0.1); border-color: var(--capy-brown);
+  color: var(--capy-brown);
+}
+.folder-tab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.folder-tab-count {
+  font-size: 10px; background: rgba(255,255,255,0.06); padding: 1px 6px;
+  border-radius: 8px; font-weight: 700;
+}
+.folder-tab.active .folder-tab-count { background: rgba(196,149,106,0.15); }
+
+/* Folder Manager Modal */
+.folder-manager-modal { width: 520px; }
+.folder-create-form { margin-bottom: 20px; }
+.folder-create-row { display: flex; flex-direction: column; gap: 10px; }
+.folder-color-pick {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.folder-color-dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer;
+  transition: all 0.12s;
+}
+.folder-color-dot:hover { transform: scale(1.15); }
+.folder-color-dot.active { border-color: #fff; box-shadow: 0 0 0 2px var(--capy-brown); }
+.folder-create-input-row {
+  display: flex; gap: 8px;
+}
+.folder-create-input-row .form-input { flex: 1; }
+.folder-list { display: flex; flex-direction: column; gap: 6px; }
+.folder-empty {
+  text-align: center; padding: 24px; color: var(--text-muted);
+  font-size: 13px; font-weight: 600;
+}
+.folder-list-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  gap: 12px;
+}
+.folder-list-item-left {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1; min-width: 0;
+}
+.folder-icon-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.folder-list-name {
+  font-size: 14px; font-weight: 700; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.folder-list-item-actions {
+  display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+}
+.folder-color-mini { display: flex; gap: 3px; margin-right: 4px; }
+.folder-color-mini-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid transparent; cursor: pointer;
+  transition: all 0.1s;
+}
+.folder-color-mini-dot:hover { transform: scale(1.2); }
+.folder-color-mini-dot.active { border-color: #fff; }
+.folder-edit-row {
+  display: flex; gap: 8px; align-items: center; width: 100%;
+}
+.folder-edit-input { flex: 1; padding: 6px 10px; }
+.folder-delete-confirm {
+  display: flex; align-items: center; gap: 4px;
+}
+.folder-delete-text { font-size: 11px; color: var(--red); font-weight: 600; white-space: nowrap; }
+
+/* Folder Picker (inline) */
+.folder-picker {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.folder-picker.compact { gap: 4px; }
+.folder-pick-option {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; font-size: 12px; font-weight: 600;
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-xs); color: var(--text-muted);
+  cursor: pointer; font-family: inherit; transition: all 0.12s;
+}
+.folder-pick-option:hover { border-color: var(--border-light); color: var(--text-secondary); }
+.folder-pick-option.active {
+  border-color: var(--capy-brown); color: var(--capy-brown);
+  background: rgba(196,149,106,0.06);
+}
+.folder-pick-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.folder-pick-label { white-space: nowrap; }
+.folder-pick-none { font-size: 10px; }
+
+/* Folder Dropdown (table action) */
+.folder-dropdown-wrap { position: relative; }
+.folder-dropdown-trigger { position: relative; }
+.folder-dropdown-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+.folder-dropdown-backdrop {
+  position: fixed; inset: 0; z-index: 99;
+}
+.folder-dropdown-menu {
+  position: absolute; top: 100%; right: 0; z-index: 100;
+  min-width: 160px; background: var(--bg-secondary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md); padding: 4px;
+  animation: fadeIn 0.1s;
+}
+.folder-dropdown-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 8px 12px; font-size: 12px; font-weight: 600;
+  background: none; border: none; color: var(--text-secondary);
+  cursor: pointer; font-family: inherit; border-radius: var(--radius-xs);
+  transition: background 0.1s; text-align: left;
+}
+.folder-dropdown-item:hover { background: var(--bg-card-hover); }
+.folder-dropdown-item.active { color: var(--capy-brown); }
+.folder-dropdown-item-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+
+/* Detail folder section */
+.detail-folder-section {
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
 /* ===== ANIMATIONS ===== */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }

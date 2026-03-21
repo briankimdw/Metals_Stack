@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext';
 import { usePortfolio } from './hooks/usePortfolio';
 import { useTransactions } from './hooks/useTransactions';
 import { usePrices } from './hooks/usePrices';
+import { useFolders } from './hooks/useFolders';
 import { METALS, formatCurrency, formatPercent } from './utils/constants';
 import Charts from './components/Charts';
 import AddModal from './components/AddModal';
@@ -10,6 +11,7 @@ import SellModal from './components/SellModal';
 import TradeModal from './components/TradeModal';
 import HoldingDetail from './components/HoldingDetail';
 import TransactionHistory from './components/TransactionHistory';
+import FolderManager from './components/FolderManager';
 import Login from './components/Login';
 import { CapybaraLogo, CapybaraWave, CapybaraSleeping } from './components/CapybaraMascot';
 
@@ -18,6 +20,10 @@ export default function App() {
   const { holdings, addHolding, removeHolding, editHolding } = usePortfolio(user);
   const { transactions, createBuyTransaction, createSellTransaction, createTradeTransaction } = useTransactions(user);
   const { prices, loading, lastUpdated, fetchPrices } = usePrices();
+  const {
+    folders, createFolder, renameFolder, updateFolderColor,
+    deleteFolder, assignHoldingToFolder,
+  } = useFolders(user);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingHolding, setEditingHolding] = useState(null);
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -27,6 +33,8 @@ export default function App() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [sortField, setSortField] = useState('metal');
   const [sortDir, setSortDir] = useState('asc');
+  const [showFolderManager, setShowFolderManager] = useState(false);
+  const [activeFolder, setActiveFolder] = useState(null); // null = show all, 'uncategorized' = no folder, or folder id
 
   const metalSummaries = useMemo(() => {
     const summaries = {};
@@ -56,8 +64,15 @@ export default function App() {
     return { totalValue, totalCost, totalPnl, totalPnlPercent, totalOz };
   }, [metalSummaries]);
 
+  // Filter holdings by active folder
+  const filteredHoldings = useMemo(() => {
+    if (activeFolder === null) return holdings;
+    if (activeFolder === 'uncategorized') return holdings.filter((h) => !h.folderId);
+    return holdings.filter((h) => h.folderId === activeFolder);
+  }, [holdings, activeFolder]);
+
   const sortedHoldings = useMemo(() => {
-    const list = [...holdings];
+    const list = [...filteredHoldings];
     list.sort((a, b) => {
       let va, vb;
       const spotA = prices[a.metal] || METALS[a.metal].defaultPrice;
@@ -78,7 +93,7 @@ export default function App() {
       return sortDir === 'asc' ? va - vb : vb - va;
     });
     return list;
-  }, [holdings, sortField, sortDir, prices]);
+  }, [filteredHoldings, sortField, sortDir, prices]);
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -128,6 +143,12 @@ export default function App() {
       setDeleteConfirm(null);
       setDetailHolding(null);
     }
+  };
+
+  const handleMoveToFolder = async (holdingId, folderId) => {
+    await assignHoldingToFolder(holdingId, folderId);
+    // Update local state
+    await editHolding(holdingId, { folderId });
   };
 
   const handleSell = async (holdingId, sellPrice, notes) => {
@@ -209,6 +230,13 @@ export default function App() {
               Trade
             </button>
           )}
+          <button
+            className="btn btn-ghost"
+            onClick={() => setShowFolderManager(true)}
+            title="Manage Folders"
+          >
+            <FolderIcon /> Folders
+          </button>
           <button
             className={`btn ${showHistory ? 'btn-active' : 'btn-ghost'}`}
             onClick={() => setShowHistory((v) => !v)}
@@ -314,8 +342,42 @@ export default function App() {
         <div className="section">
           <div className="section-header">
             <h2 className="section-title">Holdings</h2>
-            <span className="section-count">{holdings.length} position{holdings.length !== 1 ? 's' : ''}</span>
+            <span className="section-count">{filteredHoldings.length} position{filteredHoldings.length !== 1 ? 's' : ''}</span>
           </div>
+
+          {/* Folder Tabs */}
+          {folders.length > 0 && (
+            <div className="folder-tabs">
+              <button
+                className={`folder-tab ${activeFolder === null ? 'active' : ''}`}
+                onClick={() => setActiveFolder(null)}
+              >
+                All
+                <span className="folder-tab-count">{holdings.length}</span>
+              </button>
+              {folders.map((f) => {
+                const count = holdings.filter((h) => h.folderId === f.id).length;
+                return (
+                  <button
+                    key={f.id}
+                    className={`folder-tab ${activeFolder === f.id ? 'active' : ''}`}
+                    onClick={() => setActiveFolder(f.id)}
+                  >
+                    <span className="folder-tab-dot" style={{ background: f.color }} />
+                    {f.name}
+                    <span className="folder-tab-count">{count}</span>
+                  </button>
+                );
+              })}
+              <button
+                className={`folder-tab ${activeFolder === 'uncategorized' ? 'active' : ''}`}
+                onClick={() => setActiveFolder('uncategorized')}
+              >
+                Uncategorized
+                <span className="folder-tab-count">{holdings.filter((h) => !h.folderId).length}</span>
+              </button>
+            </div>
+          )}
           <div className="holdings-table-wrap">
             <table className="holdings-table">
               <thead>
@@ -385,6 +447,13 @@ export default function App() {
                       </td>
                       <td className="td-actions" onClick={(e) => e.stopPropagation()}>
                         <div className="holding-actions">
+                          {folders.length > 0 && (
+                            <FolderDropdown
+                              folders={folders}
+                              currentFolderId={h.folderId}
+                              onMove={(folderId) => handleMoveToFolder(h.id, folderId)}
+                            />
+                          )}
                           <button
                             className="btn btn-sm btn-ghost"
                             onClick={() => setEditingHolding(h)}
@@ -436,6 +505,7 @@ export default function App() {
           onSave={handleAddHolding}
           onSaveMultiple={handleAddMultiple}
           prices={prices}
+          folders={folders}
         />
       )}
 
@@ -446,6 +516,7 @@ export default function App() {
           onClose={() => setEditingHolding(null)}
           onSave={handleEditHolding}
           prices={prices}
+          folders={folders}
         />
       )}
 
@@ -474,10 +545,24 @@ export default function App() {
         <HoldingDetail
           holding={detailHolding}
           prices={prices}
+          folders={folders}
           onClose={() => setDetailHolding(null)}
           onSell={setSellHolding}
           onEdit={(h) => { setDetailHolding(null); setEditingHolding(h); }}
           onDelete={handleDeleteWithConfirm}
+          onMoveToFolder={(folderId) => handleMoveToFolder(detailHolding.id, folderId)}
+        />
+      )}
+
+      {/* Folder Manager */}
+      {showFolderManager && (
+        <FolderManager
+          folders={folders}
+          onCreate={createFolder}
+          onRename={renameFolder}
+          onUpdateColor={updateFolderColor}
+          onDelete={deleteFolder}
+          onClose={() => setShowFolderManager(false)}
         />
       )}
 
@@ -522,6 +607,61 @@ function RefreshIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
     </svg>
+  );
+}
+
+function FolderIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function FolderDropdown({ folders, currentFolderId, onMove }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="folder-dropdown-wrap">
+      <button
+        className="btn btn-sm btn-ghost folder-dropdown-trigger"
+        onClick={() => setOpen(!open)}
+        title="Move to folder"
+      >
+        {currentFolderId ? (
+          <span
+            className="folder-dropdown-dot"
+            style={{ background: folders.find((f) => f.id === currentFolderId)?.color || '#888' }}
+          />
+        ) : (
+          <FolderIcon />
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="folder-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="folder-dropdown-menu">
+            <button
+              className={`folder-dropdown-item ${!currentFolderId ? 'active' : ''}`}
+              onClick={() => { onMove(null); setOpen(false); }}
+            >
+              <span className="folder-dropdown-item-dot" style={{ background: '#666' }} />
+              None
+            </button>
+            {folders.map((f) => (
+              <button
+                key={f.id}
+                className={`folder-dropdown-item ${currentFolderId === f.id ? 'active' : ''}`}
+                onClick={() => { onMove(f.id); setOpen(false); }}
+              >
+                <span className="folder-dropdown-item-dot" style={{ background: f.color }} />
+                {f.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

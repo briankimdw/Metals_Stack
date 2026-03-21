@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { METALS, FORM_TYPES } from '../utils/constants';
+import { FolderPicker } from './FolderManager';
 
 const COMMON_SIZES = [
   { label: '1/10 oz', value: 0.1 },
@@ -12,7 +13,7 @@ const COMMON_SIZES = [
   { label: '1 kg', value: 32.151 },
 ];
 
-export default function AddModal({ onClose, onSave, onSaveMultiple, editing, prices }) {
+export default function AddModal({ onClose, onSave, onSaveMultiple, editing, prices, folders = [] }) {
   const [form, setForm] = useState({
     metal: editing?.metal || 'gold',
     type: editing?.type || 'coin',
@@ -21,6 +22,7 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
     count: 1,
     purchaseDate: editing?.purchaseDate || new Date().toISOString().split('T')[0],
     notes: editing?.notes || '',
+    folderId: editing?.folderId || null,
   });
 
   const [costMode, setCostMode] = useState('total');
@@ -69,6 +71,7 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
           costPerOz: costPerOzFinal,
           purchaseDate: form.purchaseDate,
           notes: form.notes,
+          folderId: form.folderId,
         });
       }
       onSaveMultiple(items);
@@ -480,6 +483,18 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
                 onChange={(e) => set('purchaseDate', e.target.value)}
               />
             </div>
+
+            {folders.length > 0 && (
+              <div className="form-group">
+                <label className="form-label">Folder</label>
+                <FolderPicker
+                  folders={folders}
+                  value={form.folderId}
+                  onChange={(id) => set('folderId', id)}
+                  compact
+                />
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">Notes</label>
