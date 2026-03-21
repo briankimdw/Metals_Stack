@@ -313,6 +313,46 @@ body {
 }
 .form-preview-row strong { color: var(--text-primary); font-weight: 600; }
 
+/* ===== SIZE PRESETS ===== */
+.size-presets {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.size-btn {
+  padding: 5px 12px; font-size: 12px; font-weight: 500;
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: var(--radius-xs); color: var(--text-secondary);
+  cursor: pointer; transition: all 0.12s; font-family: inherit;
+}
+.size-btn:hover { border-color: var(--border-light); color: var(--text-primary); }
+.size-btn.active {
+  border-color: var(--gold); color: var(--gold);
+  background: rgba(240, 192, 64, 0.06);
+}
+
+/* ===== COST TOGGLE ===== */
+.form-label-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.cost-toggle {
+  display: flex; border: 1px solid var(--border); border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+.cost-toggle-btn {
+  padding: 3px 10px; font-size: 11px; font-weight: 500;
+  background: transparent; border: none; color: var(--text-muted);
+  cursor: pointer; font-family: inherit; transition: all 0.12s;
+}
+.cost-toggle-btn:first-child { border-right: 1px solid var(--border); }
+.cost-toggle-btn.active {
+  background: rgba(240, 192, 64, 0.1); color: var(--gold);
+}
+.cost-toggle-btn:hover:not(.active) { color: var(--text-secondary); }
+.cost-hint {
+  font-size: 12px; color: var(--text-muted); margin-top: 4px;
+  padding-left: 2px; font-variant-numeric: tabular-nums;
+}
+
 /* ===== PRICE STATUS ===== */
 .price-status {
   display: flex; align-items: center; gap: 6px;

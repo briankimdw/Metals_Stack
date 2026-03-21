@@ -1,41 +1,78 @@
 import { useState } from 'react';
 import { METALS, FORM_TYPES } from '../utils/constants';
 
+const COMMON_SIZES = [
+  { label: '1/10 oz', value: 0.1 },
+  { label: '1/4 oz', value: 0.25 },
+  { label: '1/2 oz', value: 0.5 },
+  { label: '1 oz', value: 1 },
+  { label: '2 oz', value: 2 },
+  { label: '5 oz', value: 5 },
+  { label: '10 oz', value: 10 },
+  { label: '1 kg', value: 32.151 },
+];
+
 export default function AddModal({ onClose, onSave, editing, prices }) {
   const [form, setForm] = useState({
     metal: editing?.metal || 'gold',
     type: editing?.type || 'coin',
     description: editing?.description || '',
     quantity: editing?.quantity ?? '',
-    costPerOz: editing?.costPerOz ?? '',
     purchaseDate: editing?.purchaseDate || new Date().toISOString().split('T')[0],
     notes: editing?.notes || '',
   });
 
+  // Cost entry mode: 'per-oz' or 'total'
+  const [costMode, setCostMode] = useState('total');
+  const [costPerOz, setCostPerOz] = useState(editing?.costPerOz ?? '');
+  const [totalPaid, setTotalPaid] = useState(
+    editing ? String((editing.quantity * editing.costPerOz).toFixed(2)) : ''
+  );
+
+  const qty = parseFloat(form.quantity) || 0;
+  const spotPrice = prices[form.metal] || METALS[form.metal].defaultPrice;
+
+  // Compute effective cost/oz from either mode
+  let effectiveCostPerOz = 0;
+  if (costMode === 'per-oz') {
+    effectiveCostPerOz = parseFloat(costPerOz) || 0;
+  } else {
+    const paid = parseFloat(totalPaid) || 0;
+    effectiveCostPerOz = qty > 0 ? paid / qty : 0;
+  }
+
+  const totalCost = qty * effectiveCostPerOz;
+  const currentValue = qty * spotPrice;
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!form.quantity || !form.costPerOz) return;
+    if (!qty || !effectiveCostPerOz) return;
     onSave({
       ...form,
-      quantity: parseFloat(form.quantity),
-      costPerOz: parseFloat(form.costPerOz),
+      quantity: qty,
+      costPerOz: parseFloat(effectiveCostPerOz.toFixed(4)),
     });
   };
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
-  const qty = parseFloat(form.quantity) || 0;
-  const cost = parseFloat(form.costPerOz) || 0;
-  const totalCost = qty * cost;
-  const spotPrice = prices[form.metal] || METALS[form.metal].defaultPrice;
-  const currentValue = qty * spotPrice;
+  const handleCostModeChange = (mode) => {
+    if (mode === costMode) return;
+    // Sync values when switching
+    if (mode === 'total' && qty > 0 && costPerOz) {
+      setTotalPaid(String((qty * parseFloat(costPerOz)).toFixed(2)));
+    } else if (mode === 'per-oz' && qty > 0 && totalPaid) {
+      setCostPerOz(String((parseFloat(totalPaid) / qty).toFixed(2)));
+    }
+    setCostMode(mode);
+  };
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <h2>{editing ? 'Edit Investment' : 'Add Investment'}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}>&#10005;</button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -77,29 +114,89 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
               />
             </div>
 
-            <div className="form-row">
-              <div className="form-group">
-                <label className="form-label">Quantity (troy oz)</label>
-                <input
-                  className="form-input" type="number" step="0.001" min="0"
-                  placeholder="1.000" value={form.quantity}
-                  onChange={(e) => set('quantity', e.target.value)}
-                  required
-                />
+            {/* Weight / Size */}
+            <div className="form-group">
+              <label className="form-label">Weight (troy oz)</label>
+              <div className="size-presets">
+                {COMMON_SIZES.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    className={`size-btn ${parseFloat(form.quantity) === s.value ? 'active' : ''}`}
+                    onClick={() => set('quantity', String(s.value))}
+                  >
+                    {s.label}
+                  </button>
+                ))}
               </div>
-              <div className="form-group">
-                <label className="form-label">Cost per oz</label>
+              <input
+                className="form-input"
+                type="number" step="0.001" min="0"
+                placeholder="Or enter custom weight..."
+                value={form.quantity}
+                onChange={(e) => set('quantity', e.target.value)}
+                required
+                style={{ marginTop: 8 }}
+              />
+            </div>
+
+            {/* Cost — toggle between total paid vs per-oz */}
+            <div className="form-group">
+              <div className="form-label-row">
+                <label className="form-label" style={{ marginBottom: 0 }}>Cost</label>
+                <div className="cost-toggle">
+                  <button
+                    type="button"
+                    className={`cost-toggle-btn ${costMode === 'total' ? 'active' : ''}`}
+                    onClick={() => handleCostModeChange('total')}
+                  >
+                    Total Paid
+                  </button>
+                  <button
+                    type="button"
+                    className={`cost-toggle-btn ${costMode === 'per-oz' ? 'active' : ''}`}
+                    onClick={() => handleCostModeChange('per-oz')}
+                  >
+                    Per oz
+                  </button>
+                </div>
+              </div>
+
+              {costMode === 'total' ? (
+                <div className="form-input-group">
+                  <span className="form-input-prefix">$</span>
+                  <input
+                    className="form-input" type="number" step="0.01" min="0"
+                    placeholder={qty > 0 ? (qty * spotPrice).toFixed(2) : '0.00'}
+                    value={totalPaid}
+                    onChange={(e) => setTotalPaid(e.target.value)}
+                    required
+                  />
+                </div>
+              ) : (
                 <div className="form-input-group">
                   <span className="form-input-prefix">$</span>
                   <input
                     className="form-input" type="number" step="0.01" min="0"
                     placeholder={spotPrice.toFixed(2)}
-                    value={form.costPerOz}
-                    onChange={(e) => set('costPerOz', e.target.value)}
+                    value={costPerOz}
+                    onChange={(e) => setCostPerOz(e.target.value)}
                     required
                   />
                 </div>
-              </div>
+              )}
+
+              {/* Auto-calculated hint */}
+              {qty > 0 && effectiveCostPerOz > 0 && costMode === 'total' && (
+                <div className="cost-hint">
+                  = ${effectiveCostPerOz.toFixed(2)} per oz
+                </div>
+              )}
+              {qty > 0 && effectiveCostPerOz > 0 && costMode === 'per-oz' && (
+                <div className="cost-hint">
+                  = ${totalCost.toFixed(2)} total
+                </div>
+              )}
             </div>
 
             <div className="form-group">
@@ -122,7 +219,7 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
               />
             </div>
 
-            {qty > 0 && cost > 0 && (
+            {qty > 0 && effectiveCostPerOz > 0 && (
               <div className="form-preview">
                 <div className="form-preview-row">
                   <span>Total Cost</span>
@@ -136,6 +233,16 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
                   <span>Unrealized P/L</span>
                   <strong style={{ color: currentValue >= totalCost ? 'var(--green)' : 'var(--red)' }}>
                     {currentValue >= totalCost ? '+' : ''}${(currentValue - totalCost).toFixed(2)}
+                  </strong>
+                </div>
+                <div className="form-preview-row">
+                  <span>Premium vs Spot</span>
+                  <strong style={{ color: effectiveCostPerOz > spotPrice ? 'var(--text-secondary)' : 'var(--green)' }}>
+                    {effectiveCostPerOz > spotPrice
+                      ? `+$${(effectiveCostPerOz - spotPrice).toFixed(2)}/oz over`
+                      : effectiveCostPerOz < spotPrice
+                        ? `-$${(spotPrice - effectiveCostPerOz).toFixed(2)}/oz under`
+                        : 'At spot'}
                   </strong>
                 </div>
               </div>
