@@ -44,7 +44,6 @@ export function useTransactions(user) {
                   quantity: Number(ti.holding.quantity),
                   costPerOz: Number(ti.holding.cost_per_oz),
                   purchaseDate: ti.holding.purchase_date,
-                  imageUrl: ti.holding.image_url || '',
                   status: ti.holding.status || 'active',
                 }
               : null,
@@ -79,7 +78,6 @@ export function useTransactions(user) {
   const createSellTransaction = async (holdingId, sellPrice, notes) => {
     if (!user) return;
 
-    // Get the holding to calculate cash amount
     const { data: holding } = await supabase
       .from('holdings')
       .select('quantity')
@@ -104,7 +102,6 @@ export function useTransactions(user) {
         .from('transaction_items')
         .insert({ transaction_id: txn.id, holding_id: holdingId, direction: 'out' });
 
-      // Mark holding as sold
       await supabase
         .from('holdings')
         .update({ status: 'sold' })
@@ -116,10 +113,13 @@ export function useTransactions(user) {
     return !error;
   };
 
-  const createTradeTransaction = async (outHoldingIds, newHolding, cashAdded, notes) => {
+  // Now accepts an array of newHoldings instead of a single one
+  const createTradeTransaction = async (outHoldingIds, newHoldings, cashAdded, notes) => {
     if (!user) return null;
 
-    // Create the transaction
+    // Normalize: support both single object and array
+    const holdingsArray = Array.isArray(newHoldings) ? newHoldings : [newHoldings];
+
     const { data: txn, error: txnError } = await supabase
       .from('transactions')
       .insert({
@@ -133,7 +133,7 @@ export function useTransactions(user) {
 
     if (txnError || !txn) return null;
 
-    // Create "out" items for traded holdings
+    // Create "out" items
     const outItems = outHoldingIds.map((hid) => ({
       transaction_id: txn.id,
       holding_id: hid,
@@ -141,38 +141,41 @@ export function useTransactions(user) {
     }));
     await supabase.from('transaction_items').insert(outItems);
 
-    // Mark traded holdings as traded
+    // Mark traded holdings
     await supabase
       .from('holdings')
       .update({ status: 'traded' })
       .in('id', outHoldingIds);
 
-    // Insert the new holding
-    const { data: newRow, error: holdError } = await supabase
-      .from('holdings')
-      .insert({
-        user_id: user.id,
-        metal: newHolding.metal,
-        type: newHolding.type,
-        description: newHolding.description || '',
-        quantity: newHolding.quantity,
-        cost_per_oz: newHolding.costPerOz,
-        purchase_date: newHolding.purchaseDate || null,
-        image_url: newHolding.imageUrl || '',
-        status: 'active',
-      })
-      .select()
-      .single();
+    // Insert all new holdings
+    const createdHoldings = [];
+    for (const newHolding of holdingsArray) {
+      const { data: newRow, error: holdError } = await supabase
+        .from('holdings')
+        .insert({
+          user_id: user.id,
+          metal: newHolding.metal,
+          type: newHolding.type,
+          description: newHolding.description || '',
+          quantity: newHolding.quantity,
+          cost_per_oz: newHolding.costPerOz,
+          purchase_date: newHolding.purchaseDate || null,
+          notes: newHolding.notes || '',
+          status: 'active',
+        })
+        .select()
+        .single();
 
-    if (!holdError && newRow) {
-      // Create "in" item for new holding
-      await supabase
-        .from('transaction_items')
-        .insert({ transaction_id: txn.id, holding_id: newRow.id, direction: 'in' });
+      if (!holdError && newRow) {
+        await supabase
+          .from('transaction_items')
+          .insert({ transaction_id: txn.id, holding_id: newRow.id, direction: 'in' });
+        createdHoldings.push(newRow);
+      }
     }
 
     fetchTransactions();
-    return newRow;
+    return createdHoldings.length > 0 ? createdHoldings : null;
   };
 
   return {

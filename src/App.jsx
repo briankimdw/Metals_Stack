@@ -139,8 +139,8 @@ export default function App() {
     return success;
   };
 
-  const handleTrade = async (outIds, newHolding, cashAdded, notes) => {
-    const result = await createTradeTransaction(outIds, newHolding, cashAdded, notes);
+  const handleTrade = async (outIds, newHoldings, cashAdded, notes) => {
+    const result = await createTradeTransaction(outIds, newHoldings, cashAdded, notes);
     if (result) {
       setShowTradeModal(false);
       window.location.reload();
@@ -166,6 +166,18 @@ export default function App() {
 
   if (!user) {
     return <Login />;
+  }
+
+  // Full-page history view
+  if (showHistory) {
+    return (
+      <div className="app">
+        <TransactionHistory
+          transactions={transactions}
+          onClose={() => setShowHistory(false)}
+        />
+      </div>
+    );
   }
 
   return (
@@ -398,14 +410,6 @@ export default function App() {
             </table>
           </div>
         </div>
-      )}
-
-      {/* Transaction History */}
-      {showHistory && (
-        <TransactionHistory
-          transactions={transactions}
-          onClose={() => setShowHistory(false)}
-        />
       )}
 
       {/* Empty State */}

@@ -1,116 +1,189 @@
+import { useState, useMemo } from 'react';
 import { METALS, formatCurrency } from '../utils/constants';
+import { CapybaraSleeping } from './CapybaraMascot';
 
 const TYPE_CONFIG = {
-  buy: { label: 'Buy', color: '#10B981', bg: 'rgba(16, 185, 129, 0.1)' },
-  sell: { label: 'Sell', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.1)' },
-  trade: { label: 'Trade', color: '#6366F1', bg: 'rgba(99, 102, 241, 0.1)' },
+  buy: { label: 'Buy', color: '#4ADE80', bg: 'rgba(74, 222, 128, 0.1)', icon: '+' },
+  sell: { label: 'Sell', color: '#FB7185', bg: 'rgba(251, 113, 133, 0.1)', icon: '-' },
+  trade: { label: 'Trade', color: '#A78BFA', bg: 'rgba(167, 139, 250, 0.1)', icon: '⇄' },
 };
 
 export default function TransactionHistory({ transactions, onClose }) {
-  if (!transactions.length) {
-    return (
-      <div className="section">
-        <div className="section-title-row">
-          <h2 className="section-title">Transaction History</h2>
-          {onClose && <button className="btn btn-sm" onClick={onClose}>Hide</button>}
-        </div>
-        <div className="empty-state" style={{ padding: '40px 20px' }}>
-          <p>No transactions yet. Your buys, sells, and trades will appear here.</p>
-        </div>
-      </div>
-    );
-  }
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    let list = transactions;
+    if (filter !== 'all') list = list.filter((t) => t.type === filter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((t) =>
+        t.notes?.toLowerCase().includes(q) ||
+        t.items.some((i) =>
+          i.holding?.description?.toLowerCase().includes(q) ||
+          i.holding?.metal?.toLowerCase().includes(q) ||
+          i.holding?.type?.toLowerCase().includes(q)
+        )
+      );
+    }
+    return list;
+  }, [transactions, filter, search]);
+
+  // Group by month
+  const grouped = useMemo(() => {
+    const groups = {};
+    for (const txn of filtered) {
+      const d = new Date(txn.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      if (!groups[key]) groups[key] = { label, items: [] };
+      groups[key].items.push(txn);
+    }
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [filtered]);
+
+  const counts = useMemo(() => ({
+    all: transactions.length,
+    buy: transactions.filter((t) => t.type === 'buy').length,
+    sell: transactions.filter((t) => t.type === 'sell').length,
+    trade: transactions.filter((t) => t.type === 'trade').length,
+  }), [transactions]);
 
   return (
-    <div className="section">
-      <div className="section-title-row">
-        <h2 className="section-title">Transaction History</h2>
-        {onClose && <button className="btn btn-sm" onClick={onClose}>Hide</button>}
+    <div className="history-page">
+      {/* Header */}
+      <div className="history-header">
+        <div className="history-header-left">
+          <h1 className="history-title">Transaction History</h1>
+          <span className="history-subtitle">{transactions.length} transaction{transactions.length !== 1 ? 's' : ''}</span>
+        </div>
+        <button className="btn" onClick={onClose}>Back to Portfolio</button>
       </div>
-      <div className="txn-list">
-        {transactions.map((txn) => {
-          const config = TYPE_CONFIG[txn.type];
-          const outItems = txn.items.filter((i) => i.direction === 'out');
-          const inItems = txn.items.filter((i) => i.direction === 'in');
-          const date = new Date(txn.createdAt).toLocaleDateString('en-US', {
-            month: 'short', day: 'numeric', year: 'numeric',
-          });
-          const time = new Date(txn.createdAt).toLocaleTimeString('en-US', {
-            hour: '2-digit', minute: '2-digit',
-          });
 
-          return (
-            <div key={txn.id} className="txn-card">
-              <div className="txn-card-header">
-                <span className="txn-badge" style={{ color: config.color, background: config.bg }}>
-                  {config.label}
-                </span>
-                <span className="txn-date">{date} {time}</span>
-              </div>
+      {/* Filters */}
+      <div className="history-filters">
+        <div className="history-tabs">
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'buy', label: 'Buys' },
+            { key: 'sell', label: 'Sells' },
+            { key: 'trade', label: 'Trades' },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              className={`history-tab ${filter === tab.key ? 'active' : ''}`}
+              onClick={() => setFilter(tab.key)}
+            >
+              {tab.label}
+              <span className="history-tab-count">{counts[tab.key]}</span>
+            </button>
+          ))}
+        </div>
+        <input
+          className="form-input history-search"
+          type="text"
+          placeholder="Search transactions..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
 
-              <div className="txn-card-body">
-                {txn.type === 'buy' && inItems.map((item) => (
-                  <TxnHoldingRow key={item.id} item={item} prefix="Bought" />
-                ))}
+      {/* Transaction List */}
+      {filtered.length === 0 ? (
+        <div className="history-empty">
+          <CapybaraSleeping size={90} />
+          <p>No transactions found.</p>
+        </div>
+      ) : (
+        <div className="history-list">
+          {grouped.map(([key, group]) => (
+            <div key={key} className="history-month">
+              <h3 className="history-month-label">{group.label}</h3>
+              <div className="history-month-items">
+                {group.items.map((txn) => {
+                  const config = TYPE_CONFIG[txn.type];
+                  const outItems = txn.items.filter((i) => i.direction === 'out');
+                  const inItems = txn.items.filter((i) => i.direction === 'in');
+                  const d = new Date(txn.createdAt);
+                  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-                {txn.type === 'sell' && (
-                  <>
-                    {outItems.map((item) => (
-                      <TxnHoldingRow key={item.id} item={item} prefix="Sold" />
-                    ))}
-                    {txn.cashAmount > 0 && (
-                      <div className="txn-cash">
-                        Proceeds: <strong>{formatCurrency(txn.cashAmount)}</strong>
+                  return (
+                    <div key={txn.id} className="history-item">
+                      <div className="history-item-icon" style={{ background: config.bg, color: config.color }}>
+                        {config.icon}
                       </div>
-                    )}
-                  </>
-                )}
+                      <div className="history-item-body">
+                        <div className="history-item-top">
+                          <span className="history-item-type" style={{ color: config.color }}>
+                            {config.label}
+                          </span>
+                          <span className="history-item-date">{date} at {time}</span>
+                        </div>
 
-                {txn.type === 'trade' && (
-                  <>
-                    {outItems.length > 0 && (
-                      <div className="txn-group">
-                        <span className="txn-group-label">Traded away:</span>
-                        {outItems.map((item) => (
-                          <TxnHoldingRow key={item.id} item={item} />
+                        {txn.type === 'buy' && inItems.map((item) => (
+                          <HistoryHoldingRow key={item.id} item={item} />
                         ))}
-                      </div>
-                    )}
-                    {txn.cashAmount > 0 && (
-                      <div className="txn-cash">
-                        + Cash added: <strong>{formatCurrency(txn.cashAmount)}</strong>
-                      </div>
-                    )}
-                    {inItems.length > 0 && (
-                      <div className="txn-group">
-                        <span className="txn-group-label">Received:</span>
-                        {inItems.map((item) => (
-                          <TxnHoldingRow key={item.id} item={item} />
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
 
-              {txn.notes && (
-                <div className="txn-notes">{txn.notes}</div>
-              )}
+                        {txn.type === 'sell' && (
+                          <>
+                            {outItems.map((item) => (
+                              <HistoryHoldingRow key={item.id} item={item} />
+                            ))}
+                            {txn.cashAmount > 0 && (
+                              <div className="history-item-cash positive">
+                                Proceeds: {formatCurrency(txn.cashAmount)}
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {txn.type === 'trade' && (
+                          <div className="history-trade-detail">
+                            {outItems.length > 0 && (
+                              <div className="history-trade-side">
+                                <span className="history-trade-label out">Gave</span>
+                                {outItems.map((item) => (
+                                  <HistoryHoldingRow key={item.id} item={item} compact />
+                                ))}
+                                {txn.cashAmount > 0 && (
+                                  <div className="history-item-cash">
+                                    + {formatCurrency(txn.cashAmount)} cash
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div className="history-trade-arrow">→</div>
+                            {inItems.length > 0 && (
+                              <div className="history-trade-side">
+                                <span className="history-trade-label in">Received</span>
+                                {inItems.map((item) => (
+                                  <HistoryHoldingRow key={item.id} item={item} compact />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {txn.notes && (
+                          <div className="history-item-notes">"{txn.notes}"</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function TxnHoldingRow({ item, prefix }) {
+function HistoryHoldingRow({ item, compact }) {
   if (!item.holding) {
-    return (
-      <div className="txn-holding-row">
-        <span className="txn-holding-deleted">{prefix ? `${prefix}: ` : ''}(deleted holding)</span>
-      </div>
-    );
+    return <div className="history-holding deleted">(deleted holding)</div>;
   }
 
   const h = item.holding;
@@ -118,12 +191,12 @@ function TxnHoldingRow({ item, prefix }) {
   const totalCost = h.quantity * h.costPerOz;
 
   return (
-    <div className="txn-holding-row">
-      <span className="holding-metal-dot" style={{ background: `var(--${h.metal})`, width: 10, height: 10 }} />
-      <span className="txn-holding-name">
-        {prefix ? `${prefix}: ` : ''}{metal?.name || h.metal} — {h.description || h.type}
+    <div className={`history-holding ${compact ? 'compact' : ''}`}>
+      <span className="history-holding-dot" style={{ background: metal?.color || '#888' }} />
+      <span className="history-holding-name">
+        {metal?.name || h.metal} {h.description || h.type}
       </span>
-      <span className="txn-holding-detail">
+      <span className="history-holding-detail">
         {h.quantity} oz · {formatCurrency(totalCost)}
       </span>
     </div>
