@@ -1,5 +1,4 @@
 import { METALS, formatCurrency } from '../utils/constants';
-import { CoinThumbnail } from './CoinArt';
 
 const TYPE_CONFIG = {
   buy: { label: 'Buy', color: '#10B981', bg: 'rgba(16, 185, 129, 0.1)' },
@@ -120,7 +119,7 @@ function TxnHoldingRow({ item, prefix }) {
 
   return (
     <div className="txn-holding-row">
-      <CoinThumbnail imageUrl={h.imageUrl} metal={h.metal} size={24} />
+      <span className="holding-metal-dot" style={{ background: `var(--${h.metal})`, width: 10, height: 10 }} />
       <span className="txn-holding-name">
         {prefix ? `${prefix}: ` : ''}{metal?.name || h.metal} — {h.description || h.type}
       </span>

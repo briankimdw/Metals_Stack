@@ -1,9 +1,7 @@
 import { useState, useMemo } from 'react';
 import { METALS, FORM_TYPES, formatCurrency } from '../utils/constants';
-import { CoinThumbnail } from './CoinArt';
-import ImagePicker from './ImagePicker';
 
-const STEPS = ['Select Items', 'New Holding', 'Image', 'Review'];
+const STEPS = ['Select Items', 'New Holding', 'Review'];
 
 export default function TradeModal({ holdings, prices, onClose, onTrade }) {
   const [step, setStep] = useState(0);
@@ -19,7 +17,6 @@ export default function TradeModal({ holdings, prices, onClose, onTrade }) {
     quantity: '',
     costPerOz: '',
     purchaseDate: new Date().toISOString().split('T')[0],
-    imageUrl: '',
   });
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
@@ -51,7 +48,7 @@ export default function TradeModal({ holdings, prices, onClose, onTrade }) {
     if (step === 1 && !form.costPerOz) {
       set('costPerOz', autoCostPerOz.toFixed(2));
     }
-    setStep((s) => Math.min(s + 1, 3));
+    setStep((s) => Math.min(s + 1, 2));
   };
 
   const handleSubmit = async () => {
@@ -66,7 +63,6 @@ export default function TradeModal({ holdings, prices, onClose, onTrade }) {
         quantity: qty,
         costPerOz,
         purchaseDate: form.purchaseDate,
-        imageUrl: form.imageUrl,
       },
       cash,
       notes,
@@ -114,7 +110,7 @@ export default function TradeModal({ holdings, prices, onClose, onTrade }) {
                         checked={isSelected}
                         onChange={() => toggleHolding(h.id)}
                       />
-                      <CoinThumbnail imageUrl={h.imageUrl} metal={h.metal} size={32} />
+                      <span className="holding-metal-dot" style={{ background: `var(--${h.metal})` }} />
                       <div className="trade-item-info">
                         <span className="trade-item-name">
                           {metal.name} — {h.description || h.type}
@@ -221,20 +217,8 @@ export default function TradeModal({ holdings, prices, onClose, onTrade }) {
             </div>
           )}
 
-          {/* Step 2: Image */}
+          {/* Step 2: Review */}
           {step === 2 && (
-            <div className="trade-image">
-              <p className="trade-hint">Choose an image for the new holding:</p>
-              <ImagePicker
-                metal={form.metal}
-                value={form.imageUrl}
-                onChange={(url) => set('imageUrl', url)}
-              />
-            </div>
-          )}
-
-          {/* Step 3: Review */}
-          {step === 3 && (
             <div className="trade-review">
               <h3 className="trade-review-title">Trading Away</h3>
               <div className="trade-review-items">
@@ -242,7 +226,7 @@ export default function TradeModal({ holdings, prices, onClose, onTrade }) {
                   const metal = METALS[h.metal];
                   return (
                     <div key={h.id} className="trade-review-item">
-                      <CoinThumbnail imageUrl={h.imageUrl} metal={h.metal} size={28} />
+                      <span className="holding-metal-dot" style={{ background: `var(--${h.metal})` }} />
                       <span>{metal.name} — {h.description || h.type}</span>
                       <span className="trade-review-qty">{h.quantity} oz · {formatCurrency(h.quantity * h.costPerOz)}</span>
                     </div>
@@ -259,7 +243,7 @@ export default function TradeModal({ holdings, prices, onClose, onTrade }) {
               <h3 className="trade-review-title" style={{ marginTop: 20 }}>Receiving</h3>
               <div className="trade-review-items">
                 <div className="trade-review-item">
-                  <CoinThumbnail imageUrl={form.imageUrl} metal={form.metal} size={28} />
+                  <span className="holding-metal-dot" style={{ background: `var(--${form.metal})` }} />
                   <span>{METALS[form.metal].name} — {form.description || form.type}</span>
                   <span className="trade-review-qty">
                     {qty} oz · {formatCurrency(parseFloat(form.costPerOz) || autoCostPerOz)}/oz
@@ -285,7 +269,7 @@ export default function TradeModal({ holdings, prices, onClose, onTrade }) {
           )}
           <div style={{ flex: 1 }} />
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
-          {step < 3 ? (
+          {step < 2 ? (
             <button type="button" className="btn btn-primary" onClick={handleNext}
               disabled={!canProceed()}>
               Next

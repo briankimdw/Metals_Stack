@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { METALS, formatCurrency } from '../utils/constants';
-import { CoinThumbnail } from './CoinArt';
 
 export default function SellModal({ holding, prices, onClose, onSell }) {
   const [sellPricePerOz, setSellPricePerOz] = useState('');
@@ -34,7 +33,7 @@ export default function SellModal({ holding, prices, onClose, onSell }) {
           <div className="modal-body">
             {/* Holding being sold */}
             <div className="sell-holding-info">
-              <CoinThumbnail imageUrl={holding.imageUrl} metal={holding.metal} size={48} />
+              <span className="holding-metal-dot" style={{ background: `var(--${holding.metal})`, width: 12, height: 12 }} />
               <div>
                 <div className="sell-holding-name">
                   {metal.name} — {holding.description || holding.type}

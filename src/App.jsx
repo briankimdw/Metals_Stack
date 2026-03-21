@@ -4,8 +4,6 @@ import { usePortfolio } from './hooks/usePortfolio';
 import { useTransactions } from './hooks/useTransactions';
 import { usePrices } from './hooks/usePrices';
 import { METALS, formatCurrency, formatPercent } from './utils/constants';
-import { CoinThumbnail } from './components/CoinArt';
-import MetalStack from './components/MetalStack';
 import Charts from './components/Charts';
 import AddModal from './components/AddModal';
 import SellModal from './components/SellModal';
@@ -151,9 +149,6 @@ export default function App() {
         </div>
       )}
 
-      {/* The Stack */}
-      <MetalStack metalSummaries={metalSummaries} />
-
       {/* Metal Breakdown Cards */}
       <div className="metal-cards">
         {Object.entries(metalSummaries).map(([key, s]) => (
@@ -209,7 +204,7 @@ export default function App() {
                     <tr key={h.id}>
                       <td>
                         <div className="holding-metal">
-                          <CoinThumbnail imageUrl={h.imageUrl} metal={h.metal} size={28} />
+                          <span className="holding-metal-dot" style={{ background: `var(--${h.metal})` }} />
                           {metal.name}
                         </div>
                       </td>
