@@ -353,6 +353,51 @@ body {
   padding-left: 2px; font-variant-numeric: tabular-nums;
 }
 
+/* ===== QTY STEPPER ===== */
+.qty-stepper {
+  display: flex; align-items: center; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); overflow: hidden;
+}
+.qty-btn {
+  width: 32px; height: 36px; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-primary); border: none; color: var(--text-primary);
+  font-size: 16px; cursor: pointer; font-family: inherit;
+  transition: background 0.1s;
+}
+.qty-btn:hover { background: var(--bg-tertiary); }
+.qty-input {
+  width: 40px; height: 36px; text-align: center;
+  background: var(--bg-primary); border: none; border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border); color: var(--text-primary);
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  -moz-appearance: textfield;
+}
+.qty-input::-webkit-outer-spin-button,
+.qty-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+/* ===== RECEIPT IMPORT ===== */
+.receipt-panel {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.01);
+}
+.receipt-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+.receipt-actions { display: flex; gap: 8px; margin-top: 8px; }
+.receipt-error {
+  margin-top: 8px; font-size: 12px; color: var(--red);
+  background: var(--red-bg); padding: 8px 10px; border-radius: var(--radius-xs);
+}
+
+/* ===== PARSED ITEMS ===== */
+.parsed-items-list { display: flex; flex-direction: column; gap: 8px; }
+.parsed-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.parsed-item-info { flex: 1; min-width: 0; }
+.parsed-item-info strong { display: block; font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.parsed-item-detail { font-size: 12px; color: var(--text-muted); }
+
 /* ===== PRICE STATUS ===== */
 .price-status {
   display: flex; align-items: center; gap: 6px;

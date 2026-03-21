@@ -101,6 +101,16 @@ export default function App() {
     setShowAddModal(false);
   };
 
+  const handleAddMultiple = async (items) => {
+    for (const item of items) {
+      const created = await addHolding(item);
+      if (created) {
+        await createBuyTransaction(created.id);
+      }
+    }
+    setShowAddModal(false);
+  };
+
   const handleEditHolding = async (updates) => {
     if (!editingHolding) return;
     await editHolding(editingHolding.id, updates);
@@ -418,6 +428,7 @@ export default function App() {
         <AddModal
           onClose={() => setShowAddModal(false)}
           onSave={handleAddHolding}
+          onSaveMultiple={handleAddMultiple}
           prices={prices}
         />
       )}
