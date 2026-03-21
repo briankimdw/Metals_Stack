@@ -1,6 +1,6 @@
 import { METALS, formatCurrency, formatPercent } from '../utils/constants';
 
-export default function HoldingDetail({ holding, prices, onClose, onSell, onDelete }) {
+export default function HoldingDetail({ holding, prices, onClose, onSell, onEdit, onDelete }) {
   if (!holding) return null;
 
   const metal = METALS[holding.metal];
@@ -23,7 +23,6 @@ export default function HoldingDetail({ holding, prices, onClose, onSell, onDele
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal detail-modal">
-        {/* Colored top bar */}
         <div className="detail-accent" style={{ background: `linear-gradient(135deg, ${metal.color}, ${metal.darkColor})` }} />
 
         <div className="modal-header">
@@ -36,11 +35,10 @@ export default function HoldingDetail({ holding, prices, onClose, onSell, onDele
               <span className="detail-subtitle">{metal.name} {holding.type}</span>
             </div>
           </div>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}>&#10005;</button>
         </div>
 
         <div className="modal-body">
-          {/* Value Overview */}
           <div className="detail-value-card">
             <div className="detail-value-main">
               <span className="detail-value-label">Current Value</span>
@@ -52,7 +50,6 @@ export default function HoldingDetail({ holding, prices, onClose, onSell, onDele
             </div>
           </div>
 
-          {/* Details Grid */}
           <div className="detail-grid">
             <DetailRow label="Quantity" value={`${holding.quantity} troy oz`} />
             <DetailRow label="Cost per oz" value={formatCurrency(holding.costPerOz)} />
@@ -79,7 +76,6 @@ export default function HoldingDetail({ holding, prices, onClose, onSell, onDele
             />
           </div>
 
-          {/* Notes */}
           {holding.notes && (
             <div className="detail-notes">
               <span className="detail-notes-label">Notes</span>
@@ -89,11 +85,14 @@ export default function HoldingDetail({ holding, prices, onClose, onSell, onDele
         </div>
 
         <div className="modal-footer">
-          <button className="btn btn-danger btn-sm" onClick={() => { onDelete(holding.id); onClose(); }}>
+          <button className="btn btn-danger btn-sm" onClick={() => { onDelete(holding); }}>
             Delete
           </button>
           <div style={{ flex: 1 }} />
           <button className="btn" onClick={onClose}>Close</button>
+          <button className="btn btn-ghost" onClick={() => onEdit(holding)}>
+            &#9998; Edit
+          </button>
           <button className="btn btn-sell" onClick={() => { onClose(); onSell(holding); }}>
             Sell
           </button>

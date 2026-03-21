@@ -18,10 +18,12 @@ export default function App() {
   const { transactions, createBuyTransaction, createSellTransaction, createTradeTransaction } = useTransactions(user);
   const { prices, loading, lastUpdated, fetchPrices } = usePrices();
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingHolding, setEditingHolding] = useState(null);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [sellHolding, setSellHolding] = useState(null);
   const [detailHolding, setDetailHolding] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [sortField, setSortField] = useState('metal');
   const [sortDir, setSortDir] = useState('asc');
 
@@ -53,7 +55,6 @@ export default function App() {
     return { totalValue, totalCost, totalPnl, totalPnlPercent, totalOz };
   }, [metalSummaries]);
 
-  // Sorted holdings
   const sortedHoldings = useMemo(() => {
     const list = [...holdings];
     list.sort((a, b) => {
@@ -98,6 +99,24 @@ export default function App() {
       await createBuyTransaction(created.id);
     }
     setShowAddModal(false);
+  };
+
+  const handleEditHolding = async (updates) => {
+    if (!editingHolding) return;
+    await editHolding(editingHolding.id, updates);
+    setEditingHolding(null);
+  };
+
+  const handleDeleteWithConfirm = (holding) => {
+    setDeleteConfirm(holding);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteConfirm) {
+      await removeHolding(deleteConfirm.id);
+      setDeleteConfirm(null);
+      setDetailHolding(null);
+    }
   };
 
   const handleSell = async (holdingId, sellPrice, notes) => {
@@ -182,6 +201,18 @@ export default function App() {
         </nav>
       </header>
 
+      {/* Spot Prices Bar — always visible */}
+      <div className="spot-bar">
+        {Object.entries(metalSummaries).map(([key, s]) => (
+          <div key={key} className="spot-item">
+            <span className="spot-dot" style={{ background: s.color }} />
+            <span className="spot-name">{s.name}</span>
+            <span className="spot-price">{formatCurrency(s.spotPrice)}</span>
+            <span className="spot-unit">/oz</span>
+          </div>
+        ))}
+      </div>
+
       {/* Summary Strip */}
       {holdings.length > 0 && (
         <div className="summary-strip">
@@ -223,7 +254,7 @@ export default function App() {
           {Object.entries(metalSummaries)
             .filter(([, s]) => s.totalOz > 0)
             .map(([key, s]) => (
-            <div key={key} className={`metal-card`}>
+            <div key={key} className="metal-card">
               <div className="metal-card-accent" style={{ background: `linear-gradient(135deg, ${s.color}, ${s.darkColor})` }} />
               <div className="metal-card-header">
                 <div className="metal-card-title">
@@ -330,10 +361,20 @@ export default function App() {
                       </td>
                       <td className="td-actions" onClick={(e) => e.stopPropagation()}>
                         <div className="holding-actions">
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => setEditingHolding(h)}
+                            title="Edit"
+                          >
+                            &#9998;
+                          </button>
                           <button className="btn btn-sm btn-sell-sm" onClick={() => setSellHolding(h)}>
                             Sell
                           </button>
-                          <button className="btn btn-sm btn-ghost-danger" onClick={() => removeHolding(h.id)}>
+                          <button
+                            className="btn btn-sm btn-ghost-danger"
+                            onClick={() => handleDeleteWithConfirm(h)}
+                          >
                             &#10005;
                           </button>
                         </div>
@@ -372,7 +413,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modals */}
+      {/* Add Modal */}
       {showAddModal && (
         <AddModal
           onClose={() => setShowAddModal(false)}
@@ -380,6 +421,18 @@ export default function App() {
           prices={prices}
         />
       )}
+
+      {/* Edit Modal */}
+      {editingHolding && (
+        <AddModal
+          editing={editingHolding}
+          onClose={() => setEditingHolding(null)}
+          onSave={handleEditHolding}
+          prices={prices}
+        />
+      )}
+
+      {/* Sell Modal */}
       {sellHolding && (
         <SellModal
           holding={sellHolding}
@@ -388,6 +441,8 @@ export default function App() {
           onSell={handleSell}
         />
       )}
+
+      {/* Trade Modal */}
       {showTradeModal && (
         <TradeModal
           holdings={holdings}
@@ -396,14 +451,50 @@ export default function App() {
           onTrade={handleTrade}
         />
       )}
+
+      {/* Detail Modal */}
       {detailHolding && (
         <HoldingDetail
           holding={detailHolding}
           prices={prices}
           onClose={() => setDetailHolding(null)}
           onSell={setSellHolding}
-          onDelete={removeHolding}
+          onEdit={(h) => { setDetailHolding(null); setEditingHolding(h); }}
+          onDelete={handleDeleteWithConfirm}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setDeleteConfirm(null)}>
+          <div className="modal confirm-modal">
+            <div className="modal-header">
+              <h2>Delete Holding</h2>
+              <button className="modal-close" onClick={() => setDeleteConfirm(null)}>&#10005;</button>
+            </div>
+            <div className="modal-body">
+              <p className="confirm-text">
+                Are you sure you want to permanently delete this holding?
+              </p>
+              <div className="confirm-item">
+                <span className="confirm-item-dot" style={{ background: METALS[deleteConfirm.metal]?.color }} />
+                <div>
+                  <strong>{deleteConfirm.description || `${METALS[deleteConfirm.metal]?.name} ${deleteConfirm.type}`}</strong>
+                  <span className="confirm-item-detail">
+                    {deleteConfirm.quantity} oz &middot; {formatCurrency(deleteConfirm.quantity * deleteConfirm.costPerOz)} cost basis
+                  </span>
+                </div>
+              </div>
+              <p className="confirm-warning">This action cannot be undone.</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button className="btn btn-danger" onClick={confirmDelete}>
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
