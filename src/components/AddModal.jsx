@@ -9,6 +9,7 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
     quantity: editing?.quantity ?? '',
     costPerOz: editing?.costPerOz ?? '',
     purchaseDate: editing?.purchaseDate || new Date().toISOString().split('T')[0],
+    notes: editing?.notes || '',
   });
 
   const handleSubmit = (e) => {
@@ -67,7 +68,7 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Description (optional)</label>
+              <label className="form-label">Description</label>
               <input
                 className="form-input" type="text"
                 placeholder="e.g. 2024 American Eagle, 10oz PAMP bar..."
@@ -110,18 +111,33 @@ export default function AddModal({ onClose, onSave, editing, prices }) {
               />
             </div>
 
+            <div className="form-group">
+              <label className="form-label">Notes</label>
+              <textarea
+                className="form-input form-textarea"
+                placeholder="Where purchased, condition, mintage, serial number..."
+                value={form.notes}
+                onChange={(e) => set('notes', e.target.value)}
+                rows={3}
+              />
+            </div>
+
             {qty > 0 && cost > 0 && (
               <div className="form-preview">
-                Total cost: <strong>${totalCost.toFixed(2)}</strong>
-                {' · '}Current value: <strong>${currentValue.toFixed(2)}</strong>
-                {totalCost > 0 && (
-                  <>
-                    {' · '}
-                    <span style={{ color: currentValue >= totalCost ? '#10B981' : '#EF4444' }}>
-                      {currentValue >= totalCost ? '+' : ''}${(currentValue - totalCost).toFixed(2)}
-                    </span>
-                  </>
-                )}
+                <div className="form-preview-row">
+                  <span>Total Cost</span>
+                  <strong>${totalCost.toFixed(2)}</strong>
+                </div>
+                <div className="form-preview-row">
+                  <span>Current Value</span>
+                  <strong>${currentValue.toFixed(2)}</strong>
+                </div>
+                <div className="form-preview-row">
+                  <span>Unrealized P/L</span>
+                  <strong style={{ color: currentValue >= totalCost ? 'var(--green)' : 'var(--red)' }}>
+                    {currentValue >= totalCost ? '+' : ''}${(currentValue - totalCost).toFixed(2)}
+                  </strong>
+                </div>
               </div>
             )}
           </div>

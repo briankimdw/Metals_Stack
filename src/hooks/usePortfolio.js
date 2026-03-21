@@ -32,7 +32,7 @@ export function usePortfolio(user) {
           quantity: Number(row.quantity),
           costPerOz: Number(row.cost_per_oz),
           purchaseDate: row.purchase_date,
-          imageUrl: row.image_url || '',
+          notes: row.notes || '',
           status: row.status || 'active',
         })),
       );
@@ -93,7 +93,7 @@ export function usePortfolio(user) {
         quantity: holding.quantity,
         cost_per_oz: holding.costPerOz,
         purchase_date: holding.purchaseDate || null,
-        image_url: holding.imageUrl || '',
+        notes: holding.notes || '',
         status: 'active',
       })
       .select()
@@ -108,7 +108,7 @@ export function usePortfolio(user) {
         quantity: Number(data.quantity),
         costPerOz: Number(data.cost_per_oz),
         purchaseDate: data.purchase_date,
-        imageUrl: data.image_url || '',
+        notes: data.notes || '',
         status: data.status || 'active',
       };
       setHoldings((prev) => [...prev, newHolding]);
@@ -137,7 +137,7 @@ export function usePortfolio(user) {
     if (updates.quantity !== undefined) row.quantity = updates.quantity;
     if (updates.costPerOz !== undefined) row.cost_per_oz = updates.costPerOz;
     if (updates.purchaseDate !== undefined) row.purchase_date = updates.purchaseDate;
-    if (updates.imageUrl !== undefined) row.image_url = updates.imageUrl;
+    if (updates.notes !== undefined) row.notes = updates.notes;
 
     const { error } = await supabase.from('holdings').update(row).eq('id', id);
 
