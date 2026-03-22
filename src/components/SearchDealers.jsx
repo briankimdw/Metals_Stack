@@ -13,7 +13,8 @@ const SORT_OPTIONS = [
 const DEALER_COLORS = {
   jmbullion: '#D4A843',
   apmex: '#1A5DAB',
-  bullionexchanges: '#6A1B9A',
+  providentmetals: '#2E7D32',
+  herobullion: '#C62828',
 };
 
 export default function SearchDealers({ prices, onClose }) {
@@ -163,7 +164,7 @@ export default function SearchDealers({ prices, onClose }) {
       {loading && (
         <div className="dealer-loading">
           <div className="loading-spinner" />
-          <p>Searching 3 dealers...</p>
+          <p>Searching 4 dealers...</p>
         </div>
       )}
 
