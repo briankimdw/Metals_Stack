@@ -60,6 +60,8 @@ async function fetchBullionExchanges(query) {
       'Content-Type': 'application/json',
       'User-Agent': USER_AGENT,
       'Accept': 'application/json',
+      'Origin': 'https://bullionexchanges.com',
+      'Referer': 'https://bullionexchanges.com/',
     },
     body: JSON.stringify(graphqlQuery),
   });
