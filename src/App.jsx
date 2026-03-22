@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from './context/AuthContext';
 import { usePortfolio } from './hooks/usePortfolio';
 import { useTransactions } from './hooks/useTransactions';
@@ -650,10 +651,23 @@ function FolderIcon() {
 
 function FolderDropdown({ folders, currentFolderId, onMove }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuPos({
+        top: rect.bottom + 4,
+        left: Math.min(rect.left, window.innerWidth - 180),
+      });
+    }
+  }, [open]);
 
   return (
     <div className="folder-dropdown-wrap">
       <button
+        ref={triggerRef}
         className="btn btn-sm btn-ghost folder-dropdown-trigger"
         onClick={() => setOpen(!open)}
         title="Move to folder"
@@ -667,10 +681,13 @@ function FolderDropdown({ folders, currentFolderId, onMove }) {
           <FolderIcon />
         )}
       </button>
-      {open && (
+      {open && createPortal(
         <>
           <div className="folder-dropdown-backdrop" onClick={() => setOpen(false)} />
-          <div className="folder-dropdown-menu">
+          <div
+            className="folder-dropdown-menu"
+            style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }}
+          >
             <button
               className={`folder-dropdown-item ${!currentFolderId ? 'active' : ''}`}
               onClick={() => { onMove(null); setOpen(false); }}
@@ -689,7 +706,8 @@ function FolderDropdown({ folders, currentFolderId, onMove }) {
               </button>
             ))}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

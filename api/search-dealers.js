@@ -32,6 +32,32 @@ async function fetchJMBullion(query) {
   return results.filter((r) => r.price > 0);
 }
 
+// --- APMEX (Unbxd Search JSON API) ---
+async function fetchAPMEX(query) {
+  const apiKey = '6c75a24fd9b5c369578cc79d061f070b';
+  const siteName = 'prod-apmex807791568789776';
+  const url = `https://search.unbxd.io/${apiKey}/${siteName}/search?q=${encodeURIComponent(query)}&rows=12&fields=productId,title,price,imageUrl,productUrl,availability`;
+
+  const res = await fetchWithTimeout(url, FETCH_TIMEOUT);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+
+  const products = data?.response?.products || [];
+  return products
+    .map((p) => ({
+      dealer: 'APMEX',
+      dealerSlug: 'apmex',
+      title: p.title || '',
+      price: parseFloat(p.price) || 0,
+      priceLabel: 'As low as',
+      productUrl: p.productUrl ? `https://www.apmex.com/${p.productUrl}` : '',
+      imageUrl: Array.isArray(p.imageUrl) ? p.imageUrl[0] || '' : p.imageUrl || '',
+      inStock: p.availability === 'true' || p.availability === true,
+      sku: p.productId || '',
+    }))
+    .filter((r) => r.price > 0);
+}
+
 // --- Bullion Exchanges (Magento GraphQL API) ---
 async function fetchBullionExchanges(query) {
   const url = 'https://bullionexchanges.com/graphql';
@@ -127,7 +153,6 @@ function parseWeightFromTitle(title) {
   const gMatch = lower.match(/(\d+\.?\d*)\s*(?:gram|g\b)/);
   if (gMatch) return parseFloat(gMatch[1]) * 0.032151;
 
-  // Default: assume 1 oz for coins
   return null;
 }
 
@@ -161,6 +186,7 @@ export default async function handler(req, res) {
 
   const dealers = [
     { name: 'JM Bullion', fn: fetchJMBullion },
+    { name: 'APMEX', fn: fetchAPMEX },
     { name: 'Bullion Exchanges', fn: fetchBullionExchanges },
   ];
 

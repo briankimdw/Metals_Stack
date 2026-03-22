@@ -1010,7 +1010,7 @@ body {
   position: fixed; inset: 0; z-index: 99;
 }
 .folder-dropdown-menu {
-  position: absolute; top: 100%; right: 0; z-index: 100;
+  position: fixed; z-index: 10000;
   min-width: 160px; background: var(--bg-secondary);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md); padding: 4px;
