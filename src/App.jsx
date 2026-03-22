@@ -12,6 +12,7 @@ import TradeModal from './components/TradeModal';
 import HoldingDetail from './components/HoldingDetail';
 import TransactionHistory from './components/TransactionHistory';
 import FolderManager from './components/FolderManager';
+import SearchDealers from './components/SearchDealers';
 import Login from './components/Login';
 import { CapybaraLogo, CapybaraWave, CapybaraSleeping } from './components/CapybaraMascot';
 
@@ -34,6 +35,7 @@ export default function App() {
   const [sortField, setSortField] = useState('metal');
   const [sortDir, setSortDir] = useState('asc');
   const [showFolderManager, setShowFolderManager] = useState(false);
+  const [showDealerSearch, setShowDealerSearch] = useState(false);
   const [activeFolder, setActiveFolder] = useState(null); // null = show all, 'uncategorized' = no folder, or folder id
 
   const metalSummaries = useMemo(() => {
@@ -201,6 +203,18 @@ export default function App() {
     );
   }
 
+  // Full-page dealer search view
+  if (showDealerSearch) {
+    return (
+      <div className="app">
+        <SearchDealers
+          prices={prices}
+          onClose={() => setShowDealerSearch(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {/* Header */}
@@ -230,6 +244,13 @@ export default function App() {
               Trade
             </button>
           )}
+          <button
+            className="btn btn-ghost"
+            onClick={() => setShowDealerSearch(true)}
+            title="Search dealers"
+          >
+            <DealerSearchIcon /> Search
+          </button>
           <button
             className="btn btn-ghost"
             onClick={() => setShowFolderManager(true)}
@@ -606,6 +627,15 @@ function RefreshIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+    </svg>
+  );
+}
+
+function DealerSearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
