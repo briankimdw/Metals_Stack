@@ -66,13 +66,13 @@ function decodeEntities(str) {
 // --- JM Bullion (SearchSpring JSON API) ---
 async function fetchJMBullion(query) {
   const siteId = '7hkez9';
-  const url = `https://${siteId}.a.searchspring.io/api/search/search.json?siteId=${siteId}&q=${encodeURIComponent(query)}&resultsFormat=native&page=1&resultsPerPage=12`;
+  const url = `https://${siteId}.a.searchspring.io/api/search/search.json?siteId=${siteId}&q=${encodeURIComponent(query)}&resultsFormat=native&page=1&resultsPerPage=48`;
 
   const res = await fetchWithTimeout(url, FETCH_TIMEOUT);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
 
-  return (data.results || []).slice(0, 12)
+  return (data.results || [])
     .map((p) => ({
       dealer: 'JM Bullion',
       dealerSlug: 'jmbullion',
@@ -91,7 +91,7 @@ async function fetchJMBullion(query) {
 async function fetchAPMEX(query) {
   const apiKey = '6c75a24fd9b5c369578cc79d061f070b';
   const siteName = 'prod-apmex807791568789776';
-  const url = `https://search.unbxd.io/${apiKey}/${siteName}/search?q=${encodeURIComponent(query)}&rows=12&fields=productId,title,price,imageUrl,productUrl,availability`;
+  const url = `https://search.unbxd.io/${apiKey}/${siteName}/search?q=${encodeURIComponent(query)}&rows=48&fields=productId,title,price,imageUrl,productUrl,availability`;
 
   const res = await fetchWithTimeout(url, FETCH_TIMEOUT);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -115,13 +115,13 @@ async function fetchAPMEX(query) {
 // --- Provident Metals (SearchSpring JSON API) ---
 async function fetchProvidentMetals(query) {
   const siteId = '46h6lo';
-  const url = `https://${siteId}.a.searchspring.io/api/search/search.json?siteId=${siteId}&q=${encodeURIComponent(query)}&resultsFormat=native&page=1&resultsPerPage=12`;
+  const url = `https://${siteId}.a.searchspring.io/api/search/search.json?siteId=${siteId}&q=${encodeURIComponent(query)}&resultsFormat=native&page=1&resultsPerPage=48`;
 
   const res = await fetchWithTimeout(url, FETCH_TIMEOUT);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
 
-  return (data.results || []).slice(0, 12)
+  return (data.results || [])
     .map((p) => ({
       dealer: 'Provident Metals',
       dealerSlug: 'providentmetals',
@@ -138,7 +138,7 @@ async function fetchProvidentMetals(query) {
 
 // --- Hero Bullion (WooCommerce Store API) ---
 async function fetchHeroBullion(query) {
-  const url = `https://www.herobullion.com/wp-json/wc/store/v1/products?search=${encodeURIComponent(query)}&per_page=12`;
+  const url = `https://www.herobullion.com/wp-json/wc/store/v1/products?search=${encodeURIComponent(query)}&per_page=48`;
 
   const res = await fetchWithTimeout(url, FETCH_TIMEOUT);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
