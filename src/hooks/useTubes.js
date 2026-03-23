@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
-const FOLDER_COLORS = [
+const TUBE_COLORS = [
   '#C4956A', // capy brown
   '#FFD700', // gold
   '#C0C0C0', // silver
@@ -14,30 +14,31 @@ const FOLDER_COLORS = [
   '#FACC15', // yellow
 ];
 
-export { FOLDER_COLORS };
+export { TUBE_COLORS };
 
-export function useFolders(user) {
-  const [folders, setFolders] = useState([]);
+export function useTubes(user) {
+  const [tubes, setTubes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchFolders = useCallback(async () => {
+  const fetchTubes = useCallback(async () => {
     if (!user) {
-      setFolders([]);
+      setTubes([]);
       setLoading(false);
       return;
     }
 
     const { data, error } = await supabase
-      .from('folders')
+      .from('tubes')
       .select('*')
       .order('created_at', { ascending: true });
 
     if (!error && data) {
-      setFolders(
+      setTubes(
         data.map((row) => ({
           id: row.id,
           name: row.name,
           color: row.color || '#C4956A',
+          capacity: row.capacity || 20,
           createdAt: row.created_at,
         }))
       );
@@ -46,103 +47,121 @@ export function useFolders(user) {
   }, [user]);
 
   useEffect(() => {
-    fetchFolders();
-  }, [fetchFolders]);
+    fetchTubes();
+  }, [fetchTubes]);
 
-  const createFolder = async (name, color) => {
+  const createTube = async (name, color, capacity) => {
     if (!user) return null;
 
     const { data, error } = await supabase
-      .from('folders')
+      .from('tubes')
       .insert({
         user_id: user.id,
         name,
         color: color || '#C4956A',
+        capacity: capacity || 20,
       })
       .select()
       .single();
 
     if (!error && data) {
-      const newFolder = {
+      const newTube = {
         id: data.id,
         name: data.name,
         color: data.color,
+        capacity: data.capacity || 20,
         createdAt: data.created_at,
       };
-      setFolders((prev) => [...prev, newFolder]);
-      return newFolder;
+      setTubes((prev) => [...prev, newTube]);
+      return newTube;
     }
     return null;
   };
 
-  const renameFolder = async (id, name) => {
+  const renameTube = async (id, name) => {
     if (!user) return;
 
     const { error } = await supabase
-      .from('folders')
+      .from('tubes')
       .update({ name })
       .eq('id', id);
 
     if (!error) {
-      setFolders((prev) =>
-        prev.map((f) => (f.id === id ? { ...f, name } : f))
+      setTubes((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, name } : t))
       );
     }
   };
 
-  const updateFolderColor = async (id, color) => {
+  const updateTubeColor = async (id, color) => {
     if (!user) return;
 
     const { error } = await supabase
-      .from('folders')
+      .from('tubes')
       .update({ color })
       .eq('id', id);
 
     if (!error) {
-      setFolders((prev) =>
-        prev.map((f) => (f.id === id ? { ...f, color } : f))
+      setTubes((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, color } : t))
       );
     }
   };
 
-  const deleteFolder = async (id) => {
+  const updateTubeCapacity = async (id, capacity) => {
     if (!user) return;
 
-    // First, unassign all holdings from this folder
+    const { error } = await supabase
+      .from('tubes')
+      .update({ capacity })
+      .eq('id', id);
+
+    if (!error) {
+      setTubes((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, capacity } : t))
+      );
+    }
+  };
+
+  const deleteTube = async (id) => {
+    if (!user) return;
+
+    // First, unassign all holdings from this tube
     await supabase
       .from('holdings')
-      .update({ folder_id: null })
-      .eq('folder_id', id);
+      .update({ tube_id: null })
+      .eq('tube_id', id);
 
     const { error } = await supabase
-      .from('folders')
+      .from('tubes')
       .delete()
       .eq('id', id);
 
     if (!error) {
-      setFolders((prev) => prev.filter((f) => f.id !== id));
+      setTubes((prev) => prev.filter((t) => t.id !== id));
     }
   };
 
-  const assignHoldingToFolder = async (holdingId, folderId) => {
+  const assignHoldingToTube = async (holdingId, tubeId) => {
     if (!user) return;
 
     const { error } = await supabase
       .from('holdings')
-      .update({ folder_id: folderId })
+      .update({ tube_id: tubeId })
       .eq('id', holdingId);
 
     return !error;
   };
 
   return {
-    folders,
+    tubes,
     loading,
-    createFolder,
-    renameFolder,
-    updateFolderColor,
-    deleteFolder,
-    assignHoldingToFolder,
-    fetchFolders,
+    createTube,
+    renameTube,
+    updateTubeColor,
+    updateTubeCapacity,
+    deleteTube,
+    assignHoldingToTube,
+    fetchTubes,
   };
 }

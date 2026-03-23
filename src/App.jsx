@@ -4,7 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { usePortfolio } from './hooks/usePortfolio';
 import { useTransactions } from './hooks/useTransactions';
 import { usePrices } from './hooks/usePrices';
-import { useFolders } from './hooks/useFolders';
+import { useTubes } from './hooks/useTubes';
 import { METALS, formatCurrency, formatPercent } from './utils/constants';
 import Charts from './components/Charts';
 import AddModal from './components/AddModal';
@@ -12,7 +12,7 @@ import SellModal from './components/SellModal';
 import TradeModal from './components/TradeModal';
 import HoldingDetail from './components/HoldingDetail';
 import TransactionHistory from './components/TransactionHistory';
-import FolderManager from './components/FolderManager';
+import TubeManager from './components/TubeManager';
 import SearchDealers from './components/SearchDealers';
 import Login from './components/Login';
 import { CapybaraLogo, CapybaraWave, CapybaraSleeping } from './components/CapybaraMascot';
@@ -23,9 +23,9 @@ export default function App() {
   const { transactions, createBuyTransaction, createSellTransaction, createTradeTransaction } = useTransactions(user);
   const { prices, loading, lastUpdated, fetchPrices } = usePrices();
   const {
-    folders, createFolder, renameFolder, updateFolderColor,
-    deleteFolder, assignHoldingToFolder,
-  } = useFolders(user);
+    tubes, createTube, renameTube, updateTubeColor, updateTubeCapacity,
+    deleteTube, assignHoldingToTube,
+  } = useTubes(user);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingHolding, setEditingHolding] = useState(null);
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -35,9 +35,9 @@ export default function App() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [sortField, setSortField] = useState('metal');
   const [sortDir, setSortDir] = useState('asc');
-  const [showFolderManager, setShowFolderManager] = useState(false);
+  const [showTubeManager, setShowTubeManager] = useState(false);
   const [showDealerSearch, setShowDealerSearch] = useState(false);
-  const [activeFolder, setActiveFolder] = useState(null); // null = show all, 'uncategorized' = no folder, or folder id
+  const [activeTube, setActiveTube] = useState(null); // null = show all, 'loose' = no tube, or tube id
 
   const metalSummaries = useMemo(() => {
     const summaries = {};
@@ -67,12 +67,12 @@ export default function App() {
     return { totalValue, totalCost, totalPnl, totalPnlPercent, totalOz };
   }, [metalSummaries]);
 
-  // Filter holdings by active folder
+  // Filter holdings by active tube
   const filteredHoldings = useMemo(() => {
-    if (activeFolder === null) return holdings;
-    if (activeFolder === 'uncategorized') return holdings.filter((h) => !h.folderId);
-    return holdings.filter((h) => h.folderId === activeFolder);
-  }, [holdings, activeFolder]);
+    if (activeTube === null) return holdings;
+    if (activeTube === 'loose') return holdings.filter((h) => !h.tubeId);
+    return holdings.filter((h) => h.tubeId === activeTube);
+  }, [holdings, activeTube]);
 
   const sortedHoldings = useMemo(() => {
     const list = [...filteredHoldings];
@@ -148,10 +148,10 @@ export default function App() {
     }
   };
 
-  const handleMoveToFolder = async (holdingId, folderId) => {
-    await assignHoldingToFolder(holdingId, folderId);
+  const handleMoveToTube = async (holdingId, tubeId) => {
+    await assignHoldingToTube(holdingId, tubeId);
     // Update local state
-    await editHolding(holdingId, { folderId });
+    await editHolding(holdingId, { tubeId });
   };
 
   const handleSell = async (holdingId, sellPrice, notes) => {
@@ -254,10 +254,10 @@ export default function App() {
           </button>
           <button
             className="btn btn-ghost"
-            onClick={() => setShowFolderManager(true)}
-            title="Manage Folders"
+            onClick={() => setShowTubeManager(true)}
+            title="Manage Tubes"
           >
-            <FolderIcon /> Folders
+            <TubeIcon /> Tubes
           </button>
           <button
             className={`btn ${showHistory ? 'btn-active' : 'btn-ghost'}`}
@@ -367,36 +367,39 @@ export default function App() {
             <span className="section-count">{filteredHoldings.length} position{filteredHoldings.length !== 1 ? 's' : ''}</span>
           </div>
 
-          {/* Folder Tabs */}
-          {folders.length > 0 && (
-            <div className="folder-tabs">
+          {/* Tube Tabs */}
+          {tubes.length > 0 && (
+            <div className="tube-tabs">
               <button
-                className={`folder-tab ${activeFolder === null ? 'active' : ''}`}
-                onClick={() => setActiveFolder(null)}
+                className={`tube-tab ${activeTube === null ? 'active' : ''}`}
+                onClick={() => setActiveTube(null)}
               >
                 All
-                <span className="folder-tab-count">{holdings.length}</span>
+                <span className="tube-tab-count">{holdings.length}</span>
               </button>
-              {folders.map((f) => {
-                const count = holdings.filter((h) => h.folderId === f.id).length;
+              {tubes.map((t) => {
+                const count = holdings.filter((h) => h.tubeId === t.id).length;
+                const fillPct = Math.min((count / t.capacity) * 100, 100);
                 return (
                   <button
-                    key={f.id}
-                    className={`folder-tab ${activeFolder === f.id ? 'active' : ''}`}
-                    onClick={() => setActiveFolder(f.id)}
+                    key={t.id}
+                    className={`tube-tab ${activeTube === t.id ? 'active' : ''}`}
+                    onClick={() => setActiveTube(t.id)}
                   >
-                    <span className="folder-tab-dot" style={{ background: f.color }} />
-                    {f.name}
-                    <span className="folder-tab-count">{count}</span>
+                    <span className="tube-tab-indicator" style={{ '--tube-color': t.color }}>
+                      <span className="tube-tab-fill" style={{ height: `${fillPct}%` }} />
+                    </span>
+                    {t.name}
+                    <span className="tube-tab-count">{count}/{t.capacity}</span>
                   </button>
                 );
               })}
               <button
-                className={`folder-tab ${activeFolder === 'uncategorized' ? 'active' : ''}`}
-                onClick={() => setActiveFolder('uncategorized')}
+                className={`tube-tab ${activeTube === 'loose' ? 'active' : ''}`}
+                onClick={() => setActiveTube('loose')}
               >
-                Uncategorized
-                <span className="folder-tab-count">{holdings.filter((h) => !h.folderId).length}</span>
+                Loose
+                <span className="tube-tab-count">{holdings.filter((h) => !h.tubeId).length}</span>
               </button>
             </div>
           )}
@@ -469,11 +472,12 @@ export default function App() {
                       </td>
                       <td className="td-actions" onClick={(e) => e.stopPropagation()}>
                         <div className="holding-actions">
-                          {folders.length > 0 && (
-                            <FolderDropdown
-                              folders={folders}
-                              currentFolderId={h.folderId}
-                              onMove={(folderId) => handleMoveToFolder(h.id, folderId)}
+                          {tubes.length > 0 && (
+                            <TubeDropdown
+                              tubes={tubes}
+                              holdings={holdings}
+                              currentTubeId={h.tubeId}
+                              onMove={(tubeId) => handleMoveToTube(h.id, tubeId)}
                             />
                           )}
                           <button
@@ -527,7 +531,8 @@ export default function App() {
           onSave={handleAddHolding}
           onSaveMultiple={handleAddMultiple}
           prices={prices}
-          folders={folders}
+          tubes={tubes}
+          holdings={holdings}
         />
       )}
 
@@ -538,7 +543,8 @@ export default function App() {
           onClose={() => setEditingHolding(null)}
           onSave={handleEditHolding}
           prices={prices}
-          folders={folders}
+          tubes={tubes}
+          holdings={holdings}
         />
       )}
 
@@ -567,24 +573,27 @@ export default function App() {
         <HoldingDetail
           holding={detailHolding}
           prices={prices}
-          folders={folders}
+          tubes={tubes}
+          holdings={holdings}
           onClose={() => setDetailHolding(null)}
           onSell={setSellHolding}
           onEdit={(h) => { setDetailHolding(null); setEditingHolding(h); }}
           onDelete={handleDeleteWithConfirm}
-          onMoveToFolder={(folderId) => handleMoveToFolder(detailHolding.id, folderId)}
+          onMoveToTube={(tubeId) => handleMoveToTube(detailHolding.id, tubeId)}
         />
       )}
 
-      {/* Folder Manager */}
-      {showFolderManager && (
-        <FolderManager
-          folders={folders}
-          onCreate={createFolder}
-          onRename={renameFolder}
-          onUpdateColor={updateFolderColor}
-          onDelete={deleteFolder}
-          onClose={() => setShowFolderManager(false)}
+      {/* Tube Manager */}
+      {showTubeManager && (
+        <TubeManager
+          tubes={tubes}
+          holdings={holdings}
+          onCreate={createTube}
+          onRename={renameTube}
+          onUpdateColor={updateTubeColor}
+          onUpdateCapacity={updateTubeCapacity}
+          onDelete={deleteTube}
+          onClose={() => setShowTubeManager(false)}
         />
       )}
 
@@ -641,70 +650,79 @@ function DealerSearchIcon() {
   );
 }
 
-function FolderIcon() {
+function TubeIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <rect x="7" y="2" width="10" height="20" rx="3" />
+      <line x1="7" y1="6" x2="17" y2="6" />
+      <line x1="7" y1="18" x2="17" y2="18" />
     </svg>
   );
 }
 
-function FolderDropdown({ folders, currentFolderId, onMove }) {
+function TubeDropdown({ tubes, holdings, currentTubeId, onMove }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef(null);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+
+  const getCount = (tubeId) => holdings.filter((h) => h.tubeId === tubeId).length;
 
   useEffect(() => {
     if (open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
       setMenuPos({
         top: rect.bottom + 4,
-        left: Math.min(rect.left, window.innerWidth - 180),
+        left: Math.min(rect.left, window.innerWidth - 200),
       });
     }
   }, [open]);
 
   return (
-    <div className="folder-dropdown-wrap">
+    <div className="tube-dropdown-wrap">
       <button
         ref={triggerRef}
-        className="btn btn-sm btn-ghost folder-dropdown-trigger"
+        className="btn btn-sm btn-ghost tube-dropdown-trigger"
         onClick={() => setOpen(!open)}
-        title="Move to folder"
+        title="Move to tube"
       >
-        {currentFolderId ? (
+        {currentTubeId ? (
           <span
-            className="folder-dropdown-dot"
-            style={{ background: folders.find((f) => f.id === currentFolderId)?.color || '#888' }}
+            className="tube-dropdown-dot"
+            style={{ background: tubes.find((t) => t.id === currentTubeId)?.color || '#888' }}
           />
         ) : (
-          <FolderIcon />
+          <TubeIcon />
         )}
       </button>
       {open && createPortal(
         <>
-          <div className="folder-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="tube-dropdown-backdrop" onClick={() => setOpen(false)} />
           <div
-            className="folder-dropdown-menu"
+            className="tube-dropdown-menu"
             style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }}
           >
             <button
-              className={`folder-dropdown-item ${!currentFolderId ? 'active' : ''}`}
+              className={`tube-dropdown-item ${!currentTubeId ? 'active' : ''}`}
               onClick={() => { onMove(null); setOpen(false); }}
             >
-              <span className="folder-dropdown-item-dot" style={{ background: '#666' }} />
-              None
+              <span className="tube-dropdown-item-dot" style={{ background: '#666' }} />
+              Loose
             </button>
-            {folders.map((f) => (
-              <button
-                key={f.id}
-                className={`folder-dropdown-item ${currentFolderId === f.id ? 'active' : ''}`}
-                onClick={() => { onMove(f.id); setOpen(false); }}
-              >
-                <span className="folder-dropdown-item-dot" style={{ background: f.color }} />
-                {f.name}
-              </button>
-            ))}
+            {tubes.map((t) => {
+              const count = getCount(t.id);
+              const isFull = count >= t.capacity;
+              return (
+                <button
+                  key={t.id}
+                  className={`tube-dropdown-item ${currentTubeId === t.id ? 'active' : ''} ${isFull && currentTubeId !== t.id ? 'tube-item-full' : ''}`}
+                  onClick={() => { onMove(t.id); setOpen(false); }}
+                >
+                  <span className="tube-dropdown-item-dot" style={{ background: t.color }} />
+                  <span className="tube-dropdown-item-name">{t.name}</span>
+                  <span className="tube-dropdown-item-count">{count}/{t.capacity}</span>
+                </button>
+              );
+            })}
           </div>
         </>,
         document.body

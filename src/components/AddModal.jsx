@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { METALS, FORM_TYPES } from '../utils/constants';
-import { FolderPicker } from './FolderManager';
+import { TubePicker } from './TubeManager';
 
 const COMMON_SIZES = [
   { label: '1/10 oz', value: 0.1 },
@@ -13,7 +13,7 @@ const COMMON_SIZES = [
   { label: '1 kg', value: 32.151 },
 ];
 
-export default function AddModal({ onClose, onSave, onSaveMultiple, editing, prices, folders = [] }) {
+export default function AddModal({ onClose, onSave, onSaveMultiple, editing, prices, tubes = [], holdings = [] }) {
   const [form, setForm] = useState({
     metal: editing?.metal || 'gold',
     type: editing?.type || 'coin',
@@ -22,7 +22,7 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
     count: 1,
     purchaseDate: editing?.purchaseDate || new Date().toISOString().split('T')[0],
     notes: editing?.notes || '',
-    folderId: editing?.folderId || null,
+    tubeId: editing?.tubeId || null,
   });
 
   const [costMode, setCostMode] = useState('total');
@@ -71,7 +71,7 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
           costPerOz: costPerOzFinal,
           purchaseDate: form.purchaseDate,
           notes: form.notes,
-          folderId: form.folderId,
+          tubeId: form.tubeId,
         });
       }
       onSaveMultiple(items);
@@ -484,13 +484,14 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
               />
             </div>
 
-            {folders.length > 0 && (
+            {tubes.length > 0 && (
               <div className="form-group">
-                <label className="form-label">Folder</label>
-                <FolderPicker
-                  folders={folders}
-                  value={form.folderId}
-                  onChange={(id) => set('folderId', id)}
+                <label className="form-label">Tube</label>
+                <TubePicker
+                  tubes={tubes}
+                  holdings={holdings}
+                  value={form.tubeId}
+                  onChange={(id) => set('tubeId', id)}
                   compact
                 />
               </div>

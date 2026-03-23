@@ -1,7 +1,7 @@
 import { METALS, formatCurrency, formatPercent } from '../utils/constants';
-import { FolderPicker } from './FolderManager';
+import { TubePicker } from './TubeManager';
 
-export default function HoldingDetail({ holding, prices, folders = [], onClose, onSell, onEdit, onDelete, onMoveToFolder }) {
+export default function HoldingDetail({ holding, prices, tubes = [], holdings = [], onClose, onSell, onEdit, onDelete, onMoveToTube }) {
   if (!holding) return null;
 
   const metal = METALS[holding.metal];
@@ -77,13 +77,14 @@ export default function HoldingDetail({ holding, prices, folders = [], onClose, 
             />
           </div>
 
-          {folders.length > 0 && (
-            <div className="detail-folder-section">
-              <span className="detail-notes-label">Folder</span>
-              <FolderPicker
-                folders={folders}
-                value={holding.folderId}
-                onChange={(folderId) => onMoveToFolder(folderId)}
+          {tubes.length > 0 && (
+            <div className="detail-tube-section">
+              <span className="detail-notes-label">Tube</span>
+              <TubePicker
+                tubes={tubes}
+                holdings={holdings}
+                value={holding.tubeId}
+                onChange={(tubeId) => onMoveToTube(tubeId)}
                 compact
               />
             </div>
