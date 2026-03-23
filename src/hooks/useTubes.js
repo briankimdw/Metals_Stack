@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 const TUBE_COLORS = [
-  '#C4956A', // capy brown
+  '#D4AF37', // gold
   '#FFD700', // gold
   '#C0C0C0', // silver
   '#A78BFA', // purple
