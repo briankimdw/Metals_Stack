@@ -896,6 +896,60 @@ body {
 .dealer-empty h3 { font-size: 22px; font-weight: 800; color: var(--capy-light); }
 .dealer-empty p { font-size: 15px; max-width: 460px; line-height: 1.7; color: var(--text-secondary); font-weight: 500; }
 
+/* ===== HOLDINGS SEARCH ===== */
+.holdings-search {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 14px;
+  margin-bottom: 12px; transition: border-color 0.15s;
+}
+.holdings-search:focus-within { border-color: var(--capy-brown); }
+.holdings-search svg { color: var(--text-muted); flex-shrink: 0; }
+.holdings-search-input {
+  flex: 1; background: none; border: none; outline: none;
+  font-size: 13px; font-weight: 500; color: var(--text-primary);
+  font-family: inherit;
+}
+.holdings-search-input::placeholder { color: var(--text-muted); }
+.holdings-search-clear {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 12px; padding: 2px 6px;
+  border-radius: 4px; transition: all 0.1s;
+}
+.holdings-search-clear:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+
+/* ===== AUTOCOMPLETE ===== */
+.autocomplete-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-md);
+  max-height: 220px; overflow-y: auto; margin-top: 2px;
+}
+.autocomplete-item {
+  display: block; width: 100%; padding: 8px 14px;
+  font-size: 13px; font-weight: 500; color: var(--text-secondary);
+  background: none; border: none; text-align: left;
+  cursor: pointer; font-family: inherit; transition: background 0.1s;
+}
+.autocomplete-item:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+
+/* ===== UNIT TOGGLE ===== */
+.unit-toggle {
+  display: flex; gap: 2px; background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  padding: 2px; flex-shrink: 0;
+}
+.unit-toggle-btn {
+  padding: 3px 8px; font-size: 10px; font-weight: 700;
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-family: inherit; border-radius: 3px;
+  transition: all 0.12s; white-space: nowrap;
+}
+.unit-toggle-btn:hover { color: var(--text-secondary); }
+.unit-toggle-btn.active {
+  background: var(--capy-brown); color: #1a1a2e;
+}
+
 /* ===== TUBES ===== */
 .tube-tabs {
   display: flex; flex-wrap: wrap; gap: 4px;

@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { METALS, FORM_TYPES } from '../utils/constants';
 import { TubePicker } from './TubeManager';
+import { COIN_SUGGESTIONS, WEIGHT_UNITS } from '../utils/coinData';
 
 const COMMON_SIZES = [
   { label: '1/10 oz', value: 0.1 },
@@ -36,9 +37,26 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
   const [parseError, setParseError] = useState('');
   const [parsedItems, setParsedItems] = useState(null);
   const fileInputRef = useRef(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [weightUnit, setWeightUnit] = useState('toz');
+  const descInputRef = useRef(null);
+
+  // Build suggestions from common coins + user's existing descriptions
+  const suggestions = useMemo(() => {
+    const metalSuggestions = COIN_SUGGESTIONS[form.metal] || [];
+    const userDescs = [...new Set(holdings.map((h) => h.description).filter(Boolean))];
+    const all = [...new Set([...metalSuggestions, ...userDescs])];
+    const query = (form.description || '').toLowerCase();
+    if (!query) return all.slice(0, 10);
+    return all.filter((s) => s.toLowerCase().includes(query)).slice(0, 8);
+  }, [form.metal, form.description, holdings]);
+
+  // Convert weight input to troy oz based on selected unit
+  const unitFactor = WEIGHT_UNITS.find((u) => u.value === weightUnit)?.factor || 1;
 
   const count = parseInt(form.count) || 1;
-  const weightPerItem = parseFloat(form.weightPerItem) || 0;
+  const rawWeight = parseFloat(form.weightPerItem) || 0;
+  const weightPerItem = rawWeight * unitFactor; // always in troy oz
   const totalQty = weightPerItem * count;
   const spotPrice = prices[form.metal] || METALS[form.metal].defaultPrice;
 
@@ -346,36 +364,74 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
               </div>
             </div>
 
-            <div className="form-group">
+            <div className="form-group" style={{ position: 'relative' }}>
               <label className="form-label">Description</label>
               <input
+                ref={descInputRef}
                 className="form-input" type="text"
                 placeholder="e.g. 2024 American Eagle, 10oz PAMP bar..."
                 value={form.description}
-                onChange={(e) => set('description', e.target.value)}
+                onChange={(e) => { set('description', e.target.value); setShowSuggestions(true); }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                autoComplete="off"
               />
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="autocomplete-dropdown">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="autocomplete-item"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        set('description', s);
+                        setShowSuggestions(false);
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Weight + Count */}
             <div className="form-group">
-              <label className="form-label">Weight per item (troy oz)</label>
-              <div className="size-presets">
-                {COMMON_SIZES.map((s) => (
-                  <button
-                    key={s.value}
-                    type="button"
-                    className={`size-btn ${parseFloat(form.weightPerItem) === s.value ? 'active' : ''}`}
-                    onClick={() => set('weightPerItem', String(s.value))}
-                  >
-                    {s.label}
-                  </button>
-                ))}
+              <div className="form-label-row">
+                <label className="form-label" style={{ marginBottom: 0 }}>Weight per item</label>
+                <div className="unit-toggle">
+                  {WEIGHT_UNITS.map((u) => (
+                    <button
+                      key={u.value}
+                      type="button"
+                      className={`unit-toggle-btn ${weightUnit === u.value ? 'active' : ''}`}
+                      onClick={() => setWeightUnit(u.value)}
+                    >
+                      {u.label}
+                    </button>
+                  ))}
+                </div>
               </div>
+              {weightUnit === 'toz' && (
+                <div className="size-presets">
+                  {COMMON_SIZES.map((s) => (
+                    <button
+                      key={s.value}
+                      type="button"
+                      className={`size-btn ${parseFloat(form.weightPerItem) === s.value ? 'active' : ''}`}
+                      onClick={() => set('weightPerItem', String(s.value))}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="form-row" style={{ marginTop: 8 }}>
                 <input
                   className="form-input"
                   type="number" step="0.001" min="0"
-                  placeholder="Custom weight..."
+                  placeholder={`Weight in ${WEIGHT_UNITS.find((u) => u.value === weightUnit)?.label || 'troy oz'}...`}
                   value={form.weightPerItem}
                   onChange={(e) => set('weightPerItem', e.target.value)}
                   required
@@ -408,9 +464,14 @@ export default function AddModal({ onClose, onSave, onSaveMultiple, editing, pri
                   </div>
                 </div>
               </div>
+              {weightUnit !== 'toz' && rawWeight > 0 && (
+                <div className="cost-hint">
+                  {rawWeight} {WEIGHT_UNITS.find((u) => u.value === weightUnit)?.label} = {weightPerItem.toFixed(4)} troy oz
+                </div>
+              )}
               {count > 1 && weightPerItem > 0 && (
                 <div className="cost-hint">
-                  {count} items x {weightPerItem} oz = {totalQty.toFixed(3)} oz total
+                  {count} items x {weightPerItem.toFixed(4)} oz = {totalQty.toFixed(4)} oz total
                 </div>
               )}
             </div>

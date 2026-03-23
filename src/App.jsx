@@ -6,6 +6,7 @@ import { useTransactions } from './hooks/useTransactions';
 import { usePrices } from './hooks/usePrices';
 import { useTubes } from './hooks/useTubes';
 import { METALS, formatCurrency, formatPercent } from './utils/constants';
+import { filterHoldings } from './utils/coinData';
 import Charts from './components/Charts';
 import AddModal from './components/AddModal';
 import SellModal from './components/SellModal';
@@ -38,6 +39,7 @@ export default function App() {
   const [showTubeManager, setShowTubeManager] = useState(false);
   const [showDealerSearch, setShowDealerSearch] = useState(false);
   const [activeTube, setActiveTube] = useState(null); // null = show all, 'loose' = no tube, or tube id
+  const [searchQuery, setSearchQuery] = useState('');
 
   const metalSummaries = useMemo(() => {
     const summaries = {};
@@ -67,12 +69,14 @@ export default function App() {
     return { totalValue, totalCost, totalPnl, totalPnlPercent, totalOz };
   }, [metalSummaries]);
 
-  // Filter holdings by active tube
+  // Filter holdings by active tube and search query
   const filteredHoldings = useMemo(() => {
-    if (activeTube === null) return holdings;
-    if (activeTube === 'loose') return holdings.filter((h) => !h.tubeId);
-    return holdings.filter((h) => h.tubeId === activeTube);
-  }, [holdings, activeTube]);
+    let list = holdings;
+    if (activeTube === 'loose') list = list.filter((h) => !h.tubeId);
+    else if (activeTube !== null) list = list.filter((h) => h.tubeId === activeTube);
+    if (searchQuery.trim()) list = filterHoldings(list, searchQuery);
+    return list;
+  }, [holdings, activeTube, searchQuery]);
 
   const sortedHoldings = useMemo(() => {
     const list = [...filteredHoldings];
@@ -367,6 +371,23 @@ export default function App() {
             <span className="section-count">{filteredHoldings.length} position{filteredHoldings.length !== 1 ? 's' : ''}</span>
           </div>
 
+          {/* Search Bar */}
+          <div className="holdings-search">
+            <SearchIcon />
+            <input
+              className="holdings-search-input"
+              type="text"
+              placeholder="Search... e.g. &quot;gold eagles&quot;, &quot;silver bars over 5oz&quot;, &quot;2024 maple&quot;"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="holdings-search-clear" onClick={() => setSearchQuery('')}>
+                &#10005;
+              </button>
+            )}
+          </div>
+
           {/* Tube Tabs */}
           {tubes.length > 0 && (
             <div className="tube-tabs">
@@ -642,6 +663,15 @@ function RefreshIcon() {
 }
 
 function DealerSearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="8" />
