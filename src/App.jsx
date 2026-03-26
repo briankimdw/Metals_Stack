@@ -5,6 +5,7 @@ import { usePortfolio } from './hooks/usePortfolio';
 import { useTransactions } from './hooks/useTransactions';
 import { usePrices } from './hooks/usePrices';
 import { useTubes } from './hooks/useTubes';
+import { useWishlist } from './hooks/useWishlist';
 import { METALS, formatCurrency, formatPercent } from './utils/constants';
 import { filterHoldings } from './utils/coinData';
 import Charts from './components/Charts';
@@ -15,6 +16,7 @@ import HoldingDetail from './components/HoldingDetail';
 import TransactionHistory from './components/TransactionHistory';
 import TubeManager from './components/TubeManager';
 import SearchDealers from './components/SearchDealers';
+import Wishlist from './components/Wishlist';
 import Login from './components/Login';
 import { CapybaraLogo, CapybaraWave, CapybaraSleeping } from './components/CapybaraMascot';
 
@@ -25,8 +27,13 @@ export default function App() {
   const { prices, loading, lastUpdated, fetchPrices } = usePrices();
   const {
     tubes, createTube, renameTube, updateTubeColor, updateTubeCapacity,
-    deleteTube, assignHoldingToTube,
+    deleteTube, assignHoldingToTube, tableError: tubeTableError,
   } = useTubes(user);
+  const {
+    items: wishlistItems, addItem: addWishlistItem,
+    updateItem: updateWishlistItem, removeItem: removeWishlistItem,
+    tableError: wishlistTableError,
+  } = useWishlist(user);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingHolding, setEditingHolding] = useState(null);
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -38,8 +45,11 @@ export default function App() {
   const [sortDir, setSortDir] = useState('asc');
   const [showTubeManager, setShowTubeManager] = useState(false);
   const [showDealerSearch, setShowDealerSearch] = useState(false);
+  const [showWishlist, setShowWishlist] = useState(false);
   const [activeTube, setActiveTube] = useState(null); // null = show all, 'loose' = no tube, or tube id
   const [searchQuery, setSearchQuery] = useState('');
+  const [dragHoldingId, setDragHoldingId] = useState(null);
+  const [dragOverTube, setDragOverTube] = useState(null);
 
   const metalSummaries = useMemo(() => {
     const summaries = {};
@@ -158,6 +168,33 @@ export default function App() {
     await editHolding(holdingId, { tubeId });
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (e, holdingId) => {
+    setDragHoldingId(holdingId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', holdingId);
+  };
+  const handleDragEnd = () => {
+    setDragHoldingId(null);
+    setDragOverTube(null);
+  };
+  const handleTubeDragOver = (e, tubeId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverTube(tubeId);
+  };
+  const handleTubeDragLeave = () => {
+    setDragOverTube(null);
+  };
+  const handleTubeDrop = async (e, tubeId) => {
+    e.preventDefault();
+    setDragOverTube(null);
+    if (!dragHoldingId) return;
+    const targetTubeId = tubeId === 'loose' ? null : tubeId;
+    await handleMoveToTube(dragHoldingId, targetTubeId);
+    setDragHoldingId(null);
+  };
+
   const handleSell = async (holdingId, sellPrice, notes) => {
     const success = await createSellTransaction(holdingId, sellPrice, notes);
     if (success) {
@@ -220,6 +257,22 @@ export default function App() {
     );
   }
 
+  // Full-page wishlist view
+  if (showWishlist) {
+    return (
+      <div className="app">
+        <Wishlist
+          items={wishlistItems}
+          tableError={wishlistTableError}
+          onClose={() => setShowWishlist(false)}
+          onAdd={addWishlistItem}
+          onRemove={removeWishlistItem}
+          onUpdate={updateWishlistItem}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {/* Header */}
@@ -264,6 +317,16 @@ export default function App() {
             <TubeIcon /> Tubes
           </button>
           <button
+            className="btn btn-ghost"
+            onClick={() => setShowWishlist(true)}
+            title="Wishlist"
+          >
+            <WishlistIcon /> Wishlist
+            {wishlistItems.length > 0 && (
+              <span className="nav-badge">{wishlistItems.length}</span>
+            )}
+          </button>
+          <button
             className={`btn ${showHistory ? 'btn-active' : 'btn-ghost'}`}
             onClick={() => setShowHistory((v) => !v)}
           >
@@ -272,9 +335,12 @@ export default function App() {
           <div className="header-divider" />
           <div className="header-user">
             <div className="header-avatar">
-              {(user.email || '?')[0].toUpperCase()}
+              {user.isGuest ? '?' : (user.email || '?')[0].toUpperCase()}
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={signOut}>Sign Out</button>
+            {user.isGuest && <span className="guest-label">Guest</span>}
+            <button className="btn btn-ghost btn-sm" onClick={signOut}>
+              {user.isGuest ? 'Exit' : 'Sign Out'}
+            </button>
           </div>
         </nav>
       </header>
@@ -290,6 +356,17 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {/* Tube Table Missing Banner */}
+      {tubeTableError && (
+        <div className="setup-banner">
+          <div className="setup-banner-icon">&#9888;</div>
+          <div className="setup-banner-content">
+            <strong>Tubes table not found</strong>
+            <p>Run the SQL migration in your Supabase SQL Editor to enable tubes. Copy the contents of <code>sql/006_tubes.sql</code> and run it.</p>
+          </div>
+        </div>
+      )}
 
       {/* Summary Strip */}
       {holdings.length > 0 && (
@@ -363,6 +440,134 @@ export default function App() {
       {/* Charts */}
       <Charts metalSummaries={metalSummaries} totals={totals} />
 
+      {/* Tube Stack Visual */}
+      {holdings.length > 0 && !tubeTableError && (
+        <div className="section">
+          <div className="section-header">
+            <h2 className="section-title">Your Tubes</h2>
+            <div className="section-header-actions">
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowTubeManager(true)}>
+                <TubeIcon /> Manage Tubes
+              </button>
+            </div>
+          </div>
+
+          {tubes.length === 0 ? (
+            <div className="tube-empty-state">
+              <TubeIcon />
+              <p>Organize your coins into tubes — just like real coin storage!</p>
+              <p className="tube-empty-hint">Click <strong>Manage Tubes</strong> above to create your first tube, then drag holdings into it.</p>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowTubeManager(true)}>
+                + Create Your First Tube
+              </button>
+            </div>
+          ) : (
+            <div className="tube-stack-grid">
+              {tubes.map((t) => {
+                const tubeHoldings = holdings.filter((h) => h.tubeId === t.id);
+                const count = tubeHoldings.length;
+                const fillPct = Math.min((count / t.capacity) * 100, 100);
+                const totalValue = tubeHoldings.reduce((sum, h) => {
+                  const spot = prices[h.metal] || METALS[h.metal].defaultPrice;
+                  return sum + h.quantity * spot;
+                }, 0);
+                const totalCost = tubeHoldings.reduce((sum, h) => sum + h.quantity * h.costPerOz, 0);
+                const pnl = totalValue - totalCost;
+                return (
+                  <div
+                    key={t.id}
+                    className={`tube-stack-card ${dragOverTube === t.id ? 'drag-over' : ''}`}
+                    onDragOver={(e) => handleTubeDragOver(e, t.id)}
+                    onDragLeave={handleTubeDragLeave}
+                    onDrop={(e) => handleTubeDrop(e, t.id)}
+                    onClick={() => setActiveTube(t.id)}
+                  >
+                    <div className="tube-stack-visual">
+                      <div className="tube-stack-cylinder" style={{ '--tube-color': t.color }}>
+                        <div className="tube-stack-cylinder-fill" style={{ height: `${fillPct}%` }} />
+                        {Array.from({ length: Math.min(count, 10) }).map((_, i) => (
+                          <div
+                            key={i}
+                            className="tube-stack-coin"
+                            style={{
+                              bottom: `${(i / t.capacity) * 100}%`,
+                              background: METALS[tubeHoldings[i]?.metal]?.color || t.color,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="tube-stack-info">
+                      <div className="tube-stack-name" style={{ color: t.color }}>{t.name}</div>
+                      <div className="tube-stack-fill-text">{count} / {t.capacity}</div>
+                      <div className="tube-stack-bar">
+                        <div className="tube-stack-bar-fill" style={{ width: `${fillPct}%`, background: t.color }} />
+                      </div>
+                      <div className="tube-stack-value">
+                        {totalValue > 0 ? formatCurrency(totalValue) : '$0.00'}
+                      </div>
+                      {totalCost > 0 && (
+                        <div className={`tube-stack-pnl ${pnl >= 0 ? 'positive' : 'negative'}`}>
+                          {pnl >= 0 ? '+' : ''}{formatCurrency(pnl)}
+                        </div>
+                      )}
+                    </div>
+                    {count < t.capacity && dragHoldingId && (
+                      <div className="tube-stack-drop-hint">Drop here</div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Loose pile card */}
+              {(() => {
+                const looseHoldings = holdings.filter((h) => !h.tubeId);
+                const looseValue = looseHoldings.reduce((sum, h) => {
+                  const spot = prices[h.metal] || METALS[h.metal].defaultPrice;
+                  return sum + h.quantity * spot;
+                }, 0);
+                return looseHoldings.length > 0 && (
+                  <div
+                    className={`tube-stack-card tube-stack-loose ${dragOverTube === 'loose' ? 'drag-over' : ''}`}
+                    onDragOver={(e) => handleTubeDragOver(e, 'loose')}
+                    onDragLeave={handleTubeDragLeave}
+                    onDrop={(e) => handleTubeDrop(e, 'loose')}
+                    onClick={() => setActiveTube('loose')}
+                  >
+                    <div className="tube-stack-visual">
+                      <div className="tube-stack-loose-pile">
+                        {looseHoldings.slice(0, 5).map((h, i) => (
+                          <div
+                            key={h.id}
+                            className="tube-stack-loose-coin"
+                            style={{
+                              background: METALS[h.metal]?.color || '#888',
+                              transform: `rotate(${(i - 2) * 8}deg) translateY(${i * -3}px)`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="tube-stack-info">
+                      <div className="tube-stack-name" style={{ color: '#888' }}>Loose</div>
+                      <div className="tube-stack-fill-text">{looseHoldings.length} items</div>
+                      <div className="tube-stack-value">{formatCurrency(looseValue)}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* Quick add tube card */}
+              <div
+                className="tube-stack-card tube-stack-add"
+                onClick={() => setShowTubeManager(true)}
+              >
+                <div className="tube-stack-add-icon">+</div>
+                <div className="tube-stack-add-text">Add Tube</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Holdings Table */}
       {holdings.length > 0 && (
         <div className="section">
@@ -404,8 +609,11 @@ export default function App() {
                 return (
                   <button
                     key={t.id}
-                    className={`tube-tab ${activeTube === t.id ? 'active' : ''}`}
+                    className={`tube-tab ${activeTube === t.id ? 'active' : ''} ${dragOverTube === t.id ? 'drag-over' : ''}`}
                     onClick={() => setActiveTube(t.id)}
+                    onDragOver={(e) => handleTubeDragOver(e, t.id)}
+                    onDragLeave={handleTubeDragLeave}
+                    onDrop={(e) => handleTubeDrop(e, t.id)}
                   >
                     <span className="tube-tab-indicator" style={{ '--tube-color': t.color }}>
                       <span className="tube-tab-fill" style={{ height: `${fillPct}%` }} />
@@ -416,8 +624,11 @@ export default function App() {
                 );
               })}
               <button
-                className={`tube-tab ${activeTube === 'loose' ? 'active' : ''}`}
+                className={`tube-tab ${activeTube === 'loose' ? 'active' : ''} ${dragOverTube === 'loose' ? 'drag-over' : ''}`}
                 onClick={() => setActiveTube('loose')}
+                onDragOver={(e) => handleTubeDragOver(e, 'loose')}
+                onDragLeave={handleTubeDragLeave}
+                onDrop={(e) => handleTubeDrop(e, 'loose')}
               >
                 Loose
                 <span className="tube-tab-count">{holdings.filter((h) => !h.tubeId).length}</span>
@@ -467,7 +678,14 @@ export default function App() {
                   const pl = cv - tc;
                   const plPct = tc > 0 ? ((cv - tc) / tc) * 100 : 0;
                   return (
-                    <tr key={h.id} className="tr-clickable" onClick={() => setDetailHolding(h)}>
+                    <tr
+                      key={h.id}
+                      className={`tr-clickable ${dragHoldingId === h.id ? 'tr-dragging' : ''}`}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, h.id)}
+                      onDragEnd={handleDragEnd}
+                      onClick={() => setDetailHolding(h)}
+                    >
                       <td>
                         <div className="holding-metal">
                           <span className="holding-metal-dot" style={{ background: metal.color }} />
@@ -686,6 +904,14 @@ function TubeIcon() {
       <rect x="7" y="2" width="10" height="20" rx="3" />
       <line x1="7" y1="6" x2="17" y2="6" />
       <line x1="7" y1="18" x2="17" y2="18" />
+    </svg>
+  );
+}
+
+function WishlistIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   );
 }

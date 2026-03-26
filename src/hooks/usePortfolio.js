@@ -1,14 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { isGuest, guestSelect, guestInsert, guestUpdate, guestDelete } from '../lib/guestStorage';
 
 const LOCAL_STORAGE_KEY = 'metal-stacker-portfolio';
 const MIGRATED_KEY = 'metal-stacker-migrated';
 
+function mapRow(row) {
+  return {
+    id: row.id,
+    metal: row.metal,
+    type: row.type,
+    description: row.description || '',
+    quantity: Number(row.quantity),
+    costPerOz: Number(row.cost_per_oz ?? row.costPerOz ?? 0),
+    purchaseDate: row.purchase_date ?? row.purchaseDate ?? null,
+    imageUrl: row.image_url ?? row.imageUrl ?? '',
+    notes: row.notes || '',
+    status: row.status || 'active',
+    tubeId: row.tube_id ?? row.tubeId ?? null,
+  };
+}
+
 export function usePortfolio(user) {
   const [holdings, setHoldings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const guest = isGuest(user);
 
-  // Fetch holdings from Supabase
   const fetchHoldings = useCallback(async () => {
     if (!user) {
       setHoldings([]);
@@ -16,34 +33,40 @@ export function usePortfolio(user) {
       return;
     }
 
+    if (guest) {
+      const rows = guestSelect('holdings');
+      setHoldings(
+        rows
+          .filter((r) => !r.status || r.status === 'active')
+          .map(mapRow)
+      );
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('holdings')
       .select('*')
-      .eq('status', 'active')
       .order('created_at', { ascending: true });
 
-    if (!error && data) {
+    if (error) {
+      console.error('fetchHoldings error:', error);
+    } else if (data) {
       setHoldings(
-        data.map((row) => ({
-          id: row.id,
-          metal: row.metal,
-          type: row.type,
-          description: row.description || '',
-          quantity: Number(row.quantity),
-          costPerOz: Number(row.cost_per_oz),
-          purchaseDate: row.purchase_date,
-          notes: row.notes || '',
-          status: row.status || 'active',
-          tubeId: row.tube_id || null,
-        })),
+        data
+          .filter((row) => !row.status || row.status === 'active')
+          .map(mapRow),
       );
     }
     setLoading(false);
-  }, [user]);
+  }, [user, guest]);
 
-  // Migrate localStorage holdings to Supabase on first login
   useEffect(() => {
     if (!user) return;
+    if (guest) {
+      fetchHoldings();
+      return;
+    }
 
     const alreadyMigrated = localStorage.getItem(MIGRATED_KEY);
     if (alreadyMigrated) {
@@ -79,10 +102,27 @@ export function usePortfolio(user) {
       localStorage.setItem(MIGRATED_KEY, 'true');
       fetchHoldings();
     }
-  }, [user, fetchHoldings]);
+  }, [user, guest, fetchHoldings]);
 
   const addHolding = async (holding) => {
-    if (!user) return;
+    if (!user) return null;
+
+    if (guest) {
+      const row = guestInsert('holdings', {
+        metal: holding.metal,
+        type: holding.type,
+        description: holding.description || '',
+        quantity: holding.quantity,
+        costPerOz: holding.costPerOz,
+        purchaseDate: holding.purchaseDate || null,
+        notes: holding.notes || '',
+        status: 'active',
+        tubeId: holding.tubeId || null,
+      });
+      const newHolding = mapRow(row);
+      setHoldings((prev) => [...prev, newHolding]);
+      return newHolding;
+    }
 
     const { data, error } = await supabase
       .from('holdings')
@@ -101,19 +141,11 @@ export function usePortfolio(user) {
       .select()
       .single();
 
+    if (error) {
+      console.error('addHolding error:', error);
+    }
     if (!error && data) {
-      const newHolding = {
-        id: data.id,
-        metal: data.metal,
-        type: data.type,
-        description: data.description || '',
-        quantity: Number(data.quantity),
-        costPerOz: Number(data.cost_per_oz),
-        purchaseDate: data.purchase_date,
-        notes: data.notes || '',
-        status: data.status || 'active',
-        tubeId: data.tube_id || null,
-      };
+      const newHolding = mapRow(data);
       setHoldings((prev) => [...prev, newHolding]);
       return newHolding;
     }
@@ -123,8 +155,13 @@ export function usePortfolio(user) {
   const removeHolding = async (id) => {
     if (!user) return;
 
-    const { error } = await supabase.from('holdings').delete().eq('id', id);
+    if (guest) {
+      guestDelete('holdings', id);
+      setHoldings((prev) => prev.filter((h) => h.id !== id));
+      return;
+    }
 
+    const { error } = await supabase.from('holdings').delete().eq('id', id);
     if (!error) {
       setHoldings((prev) => prev.filter((h) => h.id !== id));
     }
@@ -132,6 +169,14 @@ export function usePortfolio(user) {
 
   const editHolding = async (id, updates) => {
     if (!user) return;
+
+    if (guest) {
+      guestUpdate('holdings', id, updates);
+      setHoldings((prev) =>
+        prev.map((h) => (h.id === id ? { ...h, ...updates } : h)),
+      );
+      return;
+    }
 
     const row = {};
     if (updates.metal !== undefined) row.metal = updates.metal;
@@ -144,7 +189,6 @@ export function usePortfolio(user) {
     if (updates.tubeId !== undefined) row.tube_id = updates.tubeId;
 
     const { error } = await supabase.from('holdings').update(row).eq('id', id);
-
     if (!error) {
       setHoldings((prev) =>
         prev.map((h) => (h.id === id ? { ...h, ...updates } : h)),

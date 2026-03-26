@@ -3,22 +3,40 @@ import { supabase } from '../lib/supabase';
 
 const AuthContext = createContext(null);
 
+const GUEST_USER = { id: 'guest', email: 'Guest', isGuest: true };
+const GUEST_KEY = 'metal-stacker-guest';
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check for existing guest session
+    if (localStorage.getItem(GUEST_KEY) === 'true') {
+      setUser(GUEST_USER);
+      setLoading(false);
+      // Still listen for auth changes in case they sign in later
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ?? null);
+      if (session?.user) {
+        setUser(session.user);
+        localStorage.removeItem(GUEST_KEY);
+      }
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session);
-        setUser(session?.user ?? null);
+        if (session?.user) {
+          setUser(session.user);
+          localStorage.removeItem(GUEST_KEY);
+        } else if (!localStorage.getItem(GUEST_KEY)) {
+          setUser(null);
+        }
         setLoading(false);
       },
     );
@@ -44,11 +62,20 @@ export function AuthProvider({ children }) {
       options: { redirectTo },
     });
 
-  const signOut = () => supabase.auth.signOut();
+  const continueAsGuest = () => {
+    localStorage.setItem(GUEST_KEY, 'true');
+    setUser(GUEST_USER);
+  };
+
+  const signOut = async () => {
+    localStorage.removeItem(GUEST_KEY);
+    setUser(null);
+    await supabase.auth.signOut();
+  };
 
   return (
     <AuthContext.Provider
-      value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut }}
+      value={{ user, session, loading, signUp, signIn, signInWithGoogle, continueAsGuest, signOut }}
     >
       {children}
     </AuthContext.Provider>
