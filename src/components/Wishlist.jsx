@@ -79,7 +79,8 @@ export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, 
       const name = info.name || getDomain(url);
       const metal = info.metal || null;
       const price = info.price || null;
-      const notes = info.inStock === false ? 'Out of stock' : info.inStock === true ? 'In stock' : null;
+      // Only set availability note when we're confident — null means unknown
+      const notes = info.inStock === true ? 'In stock' : info.inStock === false ? 'Out of stock' : null;
       await onAdd(url, name, metal, price, notes);
       setUrlInput('');
       setFetchError('');

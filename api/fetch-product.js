@@ -16,7 +16,7 @@ function fetchWithTimeout(url, timeoutMs, options = {}) {
 
 function parseMetalFromText(text) {
   const lower = text.toLowerCase();
-  if (lower.includes('gold') || lower.includes('krugerrand') || lower.includes('maple leaf gold') || lower.includes('buffalo')) return 'gold';
+  if (lower.includes('gold') || lower.includes('krugerrand') || lower.includes('buffalo') || lower.includes('sovereign')) return 'gold';
   if (lower.includes('silver')) return 'silver';
   if (lower.includes('platinum')) return 'platinum';
   if (lower.includes('palladium')) return 'palladium';
@@ -33,21 +33,31 @@ function decodeEntities(str) {
     .replace(/&#039;/g, "'");
 }
 
-// Extract slug from URL path for search queries
+// Extract a search-friendly slug from a product URL
 function slugFromUrl(url) {
   try {
     const pathname = new URL(url).pathname;
-    // Get last meaningful segment, strip .html etc
     const segments = pathname.split('/').filter(Boolean);
-    const last = segments[segments.length - 1] || '';
-    return last.replace(/\.html?$/i, '').replace(/[-_]/g, ' ').trim();
+
+    // Skip numeric-only segments (IDs like /product/12345/)
+    // Find the most descriptive segment (longest with words)
+    let best = '';
+    for (const seg of segments) {
+      const cleaned = seg.replace(/\.html?$/i, '').replace(/[-_]/g, ' ').trim();
+      // Skip pure numbers, short segments, and common path words
+      if (/^\d+$/.test(cleaned)) continue;
+      if (['product', 'products', 'item', 'items', 'p', 'dp', 'catalog', 'shop'].includes(cleaned.toLowerCase())) continue;
+      if (cleaned.length > best.length) best = cleaned;
+    }
+
+    return best || '';
   } catch {
     return '';
   }
 }
 
 // ============================================================
-// KNOWN DEALER FETCHERS
+// KNOWN DEALER FETCHERS — use search APIs
 // ============================================================
 
 async function fetchFromJMBullion(slug) {
@@ -62,7 +72,7 @@ async function fetchFromJMBullion(slug) {
     name: decodeEntities(p.name || ''),
     price: parseFloat(p.price) || null,
     imageUrl: p.imageUrl || p.thumbnailImageUrl || '',
-    inStock: p.instock === '1' || p.instock === 1,
+    inStock: p.instock === '1' || p.instock === 1 || p.ss_in_stock === '1',
     metal: parseMetalFromText(p.name || ''),
   };
 }
@@ -70,17 +80,33 @@ async function fetchFromJMBullion(slug) {
 async function fetchFromAPMEX(slug) {
   const apiKey = '6c75a24fd9b5c369578cc79d061f070b';
   const siteName = 'prod-apmex807791568789776';
-  const url = `https://search.unbxd.io/${apiKey}/${siteName}/search?q=${encodeURIComponent(slug)}&rows=5&fields=title,price,imageUrl,productUrl,availability`;
+  const url = `https://search.unbxd.io/${apiKey}/${siteName}/search?q=${encodeURIComponent(slug)}&rows=5&fields=title,price,imageUrl,productUrl,availability,inStock,isAvailable,sellPrice`;
   const res = await fetchWithTimeout(url, FETCH_TIMEOUT);
   if (!res.ok) return null;
   const data = await res.json();
   const p = data?.response?.products?.[0];
   if (!p) return null;
+
+  // APMEX availability: check multiple fields, don't trust search index alone
+  // The availability field in search can be stale — default to null (unknown) rather than false
+  let inStock = null;
+  if (p.availability === 'In Stock' || p.availability === 'true' || p.availability === true) {
+    inStock = true;
+  } else if (p.inStock === true || p.inStock === 'true' || p.isAvailable === true) {
+    inStock = true;
+  }
+  // Only mark out of stock if explicitly stated
+  if (p.availability === 'Out of Stock' || p.availability === 'Unavailable') {
+    inStock = false;
+  }
+
+  const price = parseFloat(p.sellPrice) || parseFloat(p.price) || null;
+
   return {
     name: decodeEntities(p.title || ''),
-    price: parseFloat(p.price) || null,
+    price,
     imageUrl: Array.isArray(p.imageUrl) ? p.imageUrl[0] || '' : p.imageUrl || '',
-    inStock: p.availability === 'true' || p.availability === true,
+    inStock,
     metal: parseMetalFromText(p.title || ''),
   };
 }
@@ -97,7 +123,7 @@ async function fetchFromProvident(slug) {
     name: decodeEntities(p.name || ''),
     price: parseFloat(p.price) || null,
     imageUrl: p.imageUrl || p.thumbnailImageUrl || '',
-    inStock: p.instock === '1' || p.instock === 1,
+    inStock: p.instock === '1' || p.instock === 1 || p.ss_in_stock === '1',
     metal: parseMetalFromText(p.name || ''),
   };
 }
@@ -120,7 +146,7 @@ async function fetchFromHeroBullion(slug) {
 }
 
 // ============================================================
-// GENERIC HTML META FALLBACK
+// GENERIC HTML META FALLBACK — works for any website
 // ============================================================
 
 async function fetchGenericMeta(productUrl) {
@@ -128,7 +154,6 @@ async function fetchGenericMeta(productUrl) {
   if (!res.ok) return null;
   const html = await res.text();
 
-  // Extract meta tags
   const getMeta = (property) => {
     const patterns = [
       new RegExp(`<meta[^>]*property=["']${property}["'][^>]*content=["']([^"']*)["']`, 'i'),
@@ -143,56 +168,75 @@ async function fetchGenericMeta(productUrl) {
     return null;
   };
 
-  // Try og:title, then <title>
+  // Product name: og:title > title tag
   let name = getMeta('og:title');
   if (!name) {
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     if (titleMatch) name = decodeEntities(titleMatch[1].trim());
   }
+  // Clean up common title suffixes like " | APMEX" or " - SD Bullion"
+  if (name) {
+    name = name.replace(/\s*[\|–—-]\s*(APMEX|SD Bullion|JM Bullion|Bold Precious Metals|Money Metals|Provident|Hero Bullion|eBay|Amazon|Walmart).*$/i, '').trim();
+  }
 
-  // Try to get price from various sources
+  // Price: JSON-LD > meta tags > inline price patterns
   let price = null;
+  let inStock = null;
 
-  // 1) JSON-LD structured data
+  // 1) JSON-LD structured data (most reliable)
   const jsonLdMatches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
   for (const m of jsonLdMatches) {
     try {
-      const ld = JSON.parse(m[1]);
+      let ld = JSON.parse(m[1]);
+      // Handle @graph arrays
+      if (ld['@graph']) {
+        const product = ld['@graph'].find((item) => item['@type'] === 'Product');
+        if (product) ld = product;
+      }
       const offers = ld.offers || ld?.mainEntity?.offers;
       if (offers) {
         const offer = Array.isArray(offers) ? offers[0] : offers;
-        if (offer.price) {
-          price = parseFloat(offer.price);
-        } else if (offer.lowPrice) {
-          price = parseFloat(offer.lowPrice);
+        if (!price) {
+          if (offer.price) price = parseFloat(offer.price);
+          else if (offer.lowPrice) price = parseFloat(offer.lowPrice);
+        }
+        if (inStock === null && offer.availability) {
+          const avail = offer.availability.toLowerCase();
+          if (avail.includes('instock') || avail.includes('in_stock')) inStock = true;
+          else if (avail.includes('outofstock') || avail.includes('out_of_stock') || avail.includes('soldout')) inStock = false;
         }
       }
+      // Some sites put price directly on the Product
+      if (!price && ld.price) price = parseFloat(ld.price);
     } catch { /* ignore parse errors */ }
   }
 
-  // 2) product:price:amount meta
+  // 2) Meta tags for price
   if (!price) {
     const metaPrice = getMeta('product:price:amount') || getMeta('og:price:amount');
     if (metaPrice) price = parseFloat(metaPrice);
   }
 
-  // Try to detect availability
-  let inStock = null;
-  const jsonLdMatches2 = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
-  for (const m of jsonLdMatches2) {
-    try {
-      const ld = JSON.parse(m[1]);
-      const offers = ld.offers || ld?.mainEntity?.offers;
-      if (offers) {
-        const offer = Array.isArray(offers) ? offers[0] : offers;
-        if (offer.availability) {
-          inStock = offer.availability.toLowerCase().includes('instock');
-        }
-      }
-    } catch { /* ignore */ }
+  // 3) Common inline price patterns as last resort
+  if (!price) {
+    // Match patterns like $29.99, $1,299.00
+    const priceMatch = html.match(/class=["'][^"']*price[^"']*["'][^>]*>\s*\$?([\d,]+\.?\d*)/i);
+    if (priceMatch) {
+      const parsed = parseFloat(priceMatch[1].replace(/,/g, ''));
+      if (parsed > 0 && parsed < 100000) price = parsed;
+    }
   }
 
-  // Get image
+  // 4) Check product:availability meta
+  if (inStock === null) {
+    const avail = getMeta('product:availability') || getMeta('og:availability');
+    if (avail) {
+      const lower = avail.toLowerCase();
+      if (lower.includes('instock') || lower.includes('in stock') || lower === 'available') inStock = true;
+      else if (lower.includes('outofstock') || lower.includes('out of stock') || lower === 'unavailable') inStock = false;
+    }
+  }
+
   const imageUrl = getMeta('og:image') || '';
 
   if (!name && !price) return null;
@@ -224,7 +268,7 @@ const DEALER_MAP = [
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=600');
+  res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=300');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -237,17 +281,29 @@ export default async function handler(req, res) {
     const slug = slugFromUrl(productUrl);
     let result = null;
 
-    // Try known dealer API first
+    // Try known dealer search API first
     for (const dealer of DEALER_MAP) {
       if (dealer.pattern.test(productUrl) && slug) {
         try {
           result = await dealer.fetcher(slug);
-        } catch { /* fall through to generic */ }
+        } catch { /* fall through */ }
         break;
       }
     }
 
-    // Fall back to generic HTML meta scraping
+    // If dealer API gave incomplete data (no price), also try HTML scraping
+    if (result && result.price === null) {
+      try {
+        const meta = await fetchGenericMeta(productUrl);
+        if (meta) {
+          result.price = result.price || meta.price;
+          result.inStock = result.inStock ?? meta.inStock;
+          result.name = result.name || meta.name;
+        }
+      } catch { /* ignore */ }
+    }
+
+    // If no dealer match or dealer failed, try generic HTML scraping
     if (!result) {
       try {
         result = await fetchGenericMeta(productUrl);
