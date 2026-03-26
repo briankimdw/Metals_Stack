@@ -1,5 +1,7 @@
-// Vercel serverless function — fetches product info from a dealer URL
-// Supports known dealers (JM Bullion, APMEX, Provident, Hero Bullion) + generic OG/meta fallback
+// Vercel serverless function — fetches product info from ANY URL
+// 1. Known dealers → search API (fastest, most accurate)
+// 2. Direct HTML fetch → meta tags, JSON-LD, inline prices
+// 3. Jina Reader API → renders JavaScript, works on JS-heavy sites
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const FETCH_TIMEOUT = 8000;
@@ -16,7 +18,7 @@ function fetchWithTimeout(url, timeoutMs, options = {}) {
 
 function parseMetalFromText(text) {
   const lower = text.toLowerCase();
-  if (lower.includes('gold') || lower.includes('krugerrand') || lower.includes('buffalo') || lower.includes('sovereign')) return 'gold';
+  if (lower.includes('gold') || lower.includes('krugerrand') || lower.includes('buffalo') || lower.includes('sovereign') || lower.includes('maple leaf') && !lower.includes('silver')) return 'gold';
   if (lower.includes('silver')) return 'silver';
   if (lower.includes('platinum')) return 'platinum';
   if (lower.includes('palladium')) return 'palladium';
@@ -33,31 +35,40 @@ function decodeEntities(str) {
     .replace(/&#039;/g, "'");
 }
 
-// Extract a search-friendly slug from a product URL
+// Extract search-friendly slug from URL
 function slugFromUrl(url) {
   try {
     const pathname = new URL(url).pathname;
     const segments = pathname.split('/').filter(Boolean);
-
-    // Skip numeric-only segments (IDs like /product/12345/)
-    // Find the most descriptive segment (longest with words)
     let best = '';
     for (const seg of segments) {
       const cleaned = seg.replace(/\.html?$/i, '').replace(/[-_]/g, ' ').trim();
-      // Skip pure numbers, short segments, and common path words
       if (/^\d+$/.test(cleaned)) continue;
       if (['product', 'products', 'item', 'items', 'p', 'dp', 'catalog', 'shop'].includes(cleaned.toLowerCase())) continue;
       if (cleaned.length > best.length) best = cleaned;
     }
-
     return best || '';
   } catch {
     return '';
   }
 }
 
+// Extract the first dollar price from text content
+function extractPriceFromText(text) {
+  // Match prices like $29.99, $1,299.00, As low as $32.50
+  const matches = text.match(/\$\s*([\d,]+\.?\d{0,2})/g);
+  if (!matches || matches.length === 0) return null;
+
+  // Parse all prices, filter reasonable ones (> $1, < $100k), return the first
+  const prices = matches
+    .map((m) => parseFloat(m.replace(/[$,\s]/g, '')))
+    .filter((p) => p > 1 && p < 100000);
+
+  return prices.length > 0 ? prices[0] : null;
+}
+
 // ============================================================
-// KNOWN DEALER FETCHERS — use search APIs
+// KNOWN DEALER FETCHERS
 // ============================================================
 
 async function fetchFromJMBullion(slug) {
@@ -87,24 +98,14 @@ async function fetchFromAPMEX(slug) {
   const p = data?.response?.products?.[0];
   if (!p) return null;
 
-  // APMEX availability: check multiple fields, don't trust search index alone
-  // The availability field in search can be stale — default to null (unknown) rather than false
   let inStock = null;
-  if (p.availability === 'In Stock' || p.availability === 'true' || p.availability === true) {
-    inStock = true;
-  } else if (p.inStock === true || p.inStock === 'true' || p.isAvailable === true) {
-    inStock = true;
-  }
-  // Only mark out of stock if explicitly stated
-  if (p.availability === 'Out of Stock' || p.availability === 'Unavailable') {
-    inStock = false;
-  }
-
-  const price = parseFloat(p.sellPrice) || parseFloat(p.price) || null;
+  if (p.availability === 'In Stock' || p.availability === 'true' || p.availability === true) inStock = true;
+  else if (p.inStock === true || p.inStock === 'true' || p.isAvailable === true) inStock = true;
+  if (p.availability === 'Out of Stock' || p.availability === 'Unavailable') inStock = false;
 
   return {
     name: decodeEntities(p.title || ''),
-    price,
+    price: parseFloat(p.sellPrice) || parseFloat(p.price) || null,
     imageUrl: Array.isArray(p.imageUrl) ? p.imageUrl[0] || '' : p.imageUrl || '',
     inStock,
     metal: parseMetalFromText(p.title || ''),
@@ -146,14 +147,10 @@ async function fetchFromHeroBullion(slug) {
 }
 
 // ============================================================
-// GENERIC HTML META FALLBACK — works for any website
+// LAYER 2: Direct HTML fetch — meta tags, JSON-LD, inline prices
 // ============================================================
 
-async function fetchGenericMeta(productUrl) {
-  const res = await fetchWithTimeout(productUrl, FETCH_TIMEOUT);
-  if (!res.ok) return null;
-  const html = await res.text();
-
+function parseHtml(html) {
   const getMeta = (property) => {
     const patterns = [
       new RegExp(`<meta[^>]*property=["']${property}["'][^>]*content=["']([^"']*)["']`, 'i'),
@@ -168,27 +165,23 @@ async function fetchGenericMeta(productUrl) {
     return null;
   };
 
-  // Product name: og:title > title tag
   let name = getMeta('og:title');
   if (!name) {
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     if (titleMatch) name = decodeEntities(titleMatch[1].trim());
   }
-  // Clean up common title suffixes like " | APMEX" or " - SD Bullion"
   if (name) {
-    name = name.replace(/\s*[\|–—-]\s*(APMEX|SD Bullion|JM Bullion|Bold Precious Metals|Money Metals|Provident|Hero Bullion|eBay|Amazon|Walmart).*$/i, '').trim();
+    name = name.replace(/\s*[\|–—-]\s*(APMEX|SD Bullion|JM Bullion|Bold Precious Metals|Money Metals|Provident|Hero Bullion|eBay|Amazon|Walmart|Bullion Exchanges|SilverTowne|Kitco|BGASC|Golden Eagle|Liberty Coin).*$/i, '').trim();
   }
 
-  // Price: JSON-LD > meta tags > inline price patterns
   let price = null;
   let inStock = null;
 
-  // 1) JSON-LD structured data (most reliable)
+  // JSON-LD structured data
   const jsonLdMatches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
   for (const m of jsonLdMatches) {
     try {
       let ld = JSON.parse(m[1]);
-      // Handle @graph arrays
       if (ld['@graph']) {
         const product = ld['@graph'].find((item) => item['@type'] === 'Product');
         if (product) ld = product;
@@ -206,28 +199,26 @@ async function fetchGenericMeta(productUrl) {
           else if (avail.includes('outofstock') || avail.includes('out_of_stock') || avail.includes('soldout')) inStock = false;
         }
       }
-      // Some sites put price directly on the Product
       if (!price && ld.price) price = parseFloat(ld.price);
-    } catch { /* ignore parse errors */ }
+    } catch { /* ignore */ }
   }
 
-  // 2) Meta tags for price
+  // Meta tags for price
   if (!price) {
     const metaPrice = getMeta('product:price:amount') || getMeta('og:price:amount');
     if (metaPrice) price = parseFloat(metaPrice);
   }
 
-  // 3) Common inline price patterns as last resort
+  // Inline price patterns
   if (!price) {
-    // Match patterns like $29.99, $1,299.00
-    const priceMatch = html.match(/class=["'][^"']*price[^"']*["'][^>]*>\s*\$?([\d,]+\.?\d*)/i);
+    const priceMatch = html.match(/class=["'][^"']*price[^"']*["'][^>]*>[^<]*\$\s*([\d,]+\.?\d{0,2})/i);
     if (priceMatch) {
       const parsed = parseFloat(priceMatch[1].replace(/,/g, ''));
-      if (parsed > 0 && parsed < 100000) price = parsed;
+      if (parsed > 1 && parsed < 100000) price = parsed;
     }
   }
 
-  // 4) Check product:availability meta
+  // Availability meta
   if (inStock === null) {
     const avail = getMeta('product:availability') || getMeta('og:availability');
     if (avail) {
@@ -250,6 +241,76 @@ async function fetchGenericMeta(productUrl) {
   };
 }
 
+async function fetchDirectHtml(productUrl) {
+  const res = await fetchWithTimeout(productUrl, FETCH_TIMEOUT);
+  if (!res.ok) return null;
+  const html = await res.text();
+  return parseHtml(html);
+}
+
+// ============================================================
+// LAYER 3: Jina Reader API — renders JavaScript, works on ANY site
+// ============================================================
+
+async function fetchViaJinaReader(productUrl) {
+  const jinaUrl = `https://r.jina.ai/${productUrl}`;
+  const res = await fetchWithTimeout(jinaUrl, FETCH_TIMEOUT, {
+    headers: {
+      'Accept': 'application/json',
+      'X-No-Cache': 'true',
+    },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+
+  const name = data.data?.title || '';
+  const content = data.data?.content || '';
+  const imageUrl = data.data?.image || '';
+
+  // Extract price from rendered content
+  const price = extractPriceFromText(content);
+
+  // Check availability from rendered text
+  let inStock = null;
+  const lowerContent = content.toLowerCase();
+  if (lowerContent.includes('add to cart') || lowerContent.includes('buy now') || lowerContent.includes('in stock')) {
+    inStock = true;
+  } else if (lowerContent.includes('out of stock') || lowerContent.includes('sold out') || lowerContent.includes('unavailable') || lowerContent.includes('currently unavailable')) {
+    inStock = false;
+  }
+
+  if (!name && !price) return null;
+
+  // Clean up title
+  const cleanName = name
+    .replace(/\s*[\|–—-]\s*(APMEX|SD Bullion|JM Bullion|Bold Precious Metals|Money Metals|Provident|Hero Bullion|eBay|Amazon|Walmart|Bullion Exchanges|SilverTowne|Kitco|BGASC|Golden Eagle|Liberty Coin).*$/i, '')
+    .trim();
+
+  return {
+    name: cleanName || name,
+    price,
+    imageUrl,
+    inStock,
+    metal: parseMetalFromText(cleanName || name),
+  };
+}
+
+// ============================================================
+// MERGE HELPER — combine results, prefer non-null values
+// ============================================================
+
+function mergeResults(primary, secondary) {
+  if (!secondary) return primary;
+  if (!primary) return secondary;
+  return {
+    name: primary.name || secondary.name,
+    price: primary.price ?? secondary.price,
+    imageUrl: primary.imageUrl || secondary.imageUrl,
+    inStock: primary.inStock ?? secondary.inStock,
+    metal: primary.metal || secondary.metal,
+  };
+}
+
 // ============================================================
 // DEALER ROUTING
 // ============================================================
@@ -262,7 +323,7 @@ const DEALER_MAP = [
 ];
 
 // ============================================================
-// HANDLER
+// HANDLER — tries up to 3 layers to get product info
 // ============================================================
 
 export default async function handler(req, res) {
@@ -281,7 +342,7 @@ export default async function handler(req, res) {
     const slug = slugFromUrl(productUrl);
     let result = null;
 
-    // Try known dealer search API first
+    // LAYER 1: Known dealer search API
     for (const dealer of DEALER_MAP) {
       if (dealer.pattern.test(productUrl) && slug) {
         try {
@@ -291,22 +352,18 @@ export default async function handler(req, res) {
       }
     }
 
-    // If dealer API gave incomplete data (no price), also try HTML scraping
-    if (result && result.price === null) {
-      try {
-        const meta = await fetchGenericMeta(productUrl);
-        if (meta) {
-          result.price = result.price || meta.price;
-          result.inStock = result.inStock ?? meta.inStock;
-          result.name = result.name || meta.name;
-        }
-      } catch { /* ignore */ }
-    }
+    // LAYER 2: Direct HTML fetch (meta tags, JSON-LD)
+    // Always try this — either as primary or to fill gaps from dealer API
+    try {
+      const htmlResult = await fetchDirectHtml(productUrl);
+      result = mergeResults(result, htmlResult);
+    } catch { /* ignore */ }
 
-    // If no dealer match or dealer failed, try generic HTML scraping
-    if (!result) {
+    // LAYER 3: Jina Reader (renders JS) — only if we're still missing price
+    if (!result || result.price === null) {
       try {
-        result = await fetchGenericMeta(productUrl);
+        const jinaResult = await fetchViaJinaReader(productUrl);
+        result = mergeResults(result, jinaResult);
       } catch { /* ignore */ }
     }
 
