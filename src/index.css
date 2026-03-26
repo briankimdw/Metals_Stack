@@ -1370,6 +1370,15 @@ body {
 }
 
 /* ===== WISHLIST ===== */
+.wishlist-fetching {
+  font-size: 11px; font-weight: 500; color: var(--gold);
+  margin-left: 8px;
+  animation: pulse-text 1.2s ease-in-out infinite;
+}
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 .wishlist-page { padding-top: 8px; }
 .wishlist-header {
   display: flex; justify-content: space-between; align-items: center;
