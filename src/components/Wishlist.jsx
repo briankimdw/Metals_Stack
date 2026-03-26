@@ -18,13 +18,9 @@ function normalizeUrl(url) {
   return trimmed;
 }
 
-const EMPTY_FORM = { url: '', name: '', metal: '', price: '', notes: '' };
-
-const API_BASE = import.meta.env.DEV ? '' : '';
-
 async function fetchProductInfo(url) {
   try {
-    const res = await fetch(`${API_BASE}/api/fetch-product?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`/api/fetch-product?url=${encodeURIComponent(url)}`);
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.found) return null;
@@ -37,11 +33,11 @@ async function fetchProductInfo(url) {
 export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, onUpdate }) {
   const [search, setSearch] = useState('');
   const [filterMetal, setFilterMetal] = useState('all');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [urlInput, setUrlInput] = useState('');
   const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState('');
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editForm, setEditForm] = useState({ url: '', name: '', metal: '', price: '', notes: '' });
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const filtered = useMemo(() => {
@@ -68,30 +64,49 @@ export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, 
     return counts;
   }, [items]);
 
-  const handleUrlLookup = async (rawUrl) => {
-    const url = normalizeUrl(rawUrl);
+  // Paste a URL → auto-fetch product info → add to wishlist
+  const handleAddUrl = async (rawUrl) => {
+    const url = normalizeUrl(rawUrl || urlInput);
     if (!url || url.length < 10) return;
+
     setFetching(true);
+    setFetchError('');
+
     const info = await fetchProductInfo(url);
+
+    if (info) {
+      // Got product info — add directly to wishlist
+      const name = info.name || getDomain(url);
+      const metal = info.metal || null;
+      const price = info.price || null;
+      const notes = info.inStock === false ? 'Out of stock' : info.inStock === true ? 'In stock' : null;
+      await onAdd(url, name, metal, price, notes);
+      setUrlInput('');
+      setFetchError('');
+    } else {
+      // Couldn't fetch info — add with domain as name so it's still tracked
+      const name = getDomain(url);
+      await onAdd(url, name, null, null, null);
+      setUrlInput('');
+      setFetchError('');
+    }
+
     setFetching(false);
-    if (!info) return;
-    // Only auto-fill fields that are still empty
-    setForm((prev) => ({
-      ...prev,
-      name: prev.name || info.name || '',
-      metal: prev.metal || info.metal || '',
-      price: prev.price || (info.price ? String(info.price) : ''),
-      notes: prev.notes || (info.inStock === false ? 'Out of stock' : info.inStock === true ? 'In stock' : ''),
-    }));
   };
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    const url = normalizeUrl(form.url);
-    if (!url || !form.name.trim()) return;
-    await onAdd(url, form.name.trim(), form.metal || null, form.price ? Number(form.price) : null, form.notes || null);
-    setForm(EMPTY_FORM);
-    setShowAddForm(false);
+  const handleUrlKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddUrl();
+    }
+  };
+
+  const handleUrlPaste = (e) => {
+    const pasted = e.clipboardData.getData('text');
+    if (pasted && pasted.trim().match(/^https?:\/\//i)) {
+      // Auto-submit after paste if it looks like a full URL
+      setTimeout(() => handleAddUrl(pasted.trim()), 150);
+    }
   };
 
   const startEdit = (item) => {
@@ -162,127 +177,71 @@ export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, 
         <button className="btn" onClick={onClose}>Back to Portfolio</button>
       </div>
 
-      {/* Toolbar */}
-      <div className="wishlist-toolbar">
-        <div className="wishlist-search">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search wishlist..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="wishlist-search-input"
-          />
-          {search && (
-            <button className="wishlist-search-clear" onClick={() => setSearch('')}>&#10005;</button>
-          )}
-        </div>
-
-        <div className="wishlist-filters">
-          <button
-            className={`wishlist-filter-btn ${filterMetal === 'all' ? 'active' : ''}`}
-            onClick={() => setFilterMetal('all')}
-          >
-            All ({metalCounts.all})
-          </button>
-          {Object.entries(METALS).map(([key, m]) =>
-            metalCounts[key] ? (
-              <button
-                key={key}
-                className={`wishlist-filter-btn ${filterMetal === key ? 'active' : ''}`}
-                onClick={() => setFilterMetal(key)}
-                style={filterMetal === key ? { borderColor: m.color, color: m.color } : {}}
-              >
-                {m.name} ({metalCounts[key]})
-              </button>
-            ) : null
-          )}
-        </div>
-
-        <button
-          className={`btn btn-primary btn-sm ${showAddForm ? 'btn-active' : ''}`}
-          onClick={() => setShowAddForm(!showAddForm)}
-        >
-          {showAddForm ? 'Cancel' : '+ Add Item'}
-        </button>
+      {/* URL Input Bar — just paste and go */}
+      <div className="wishlist-url-bar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+        </svg>
+        <input
+          type="text"
+          className="wishlist-url-input"
+          placeholder={fetching ? 'Looking up product...' : 'Paste a product URL to add it to your wishlist'}
+          value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)}
+          onKeyDown={handleUrlKeyDown}
+          onPaste={handleUrlPaste}
+          disabled={fetching}
+        />
+        {fetching ? (
+          <div className="wishlist-url-spinner" />
+        ) : urlInput.trim() ? (
+          <button className="btn btn-primary btn-sm" onClick={() => handleAddUrl()}>Add</button>
+        ) : null}
       </div>
+      {fetchError && <div className="wishlist-fetch-error">{fetchError}</div>}
 
-      {/* Add Form */}
-      {showAddForm && (
-        <form className="wishlist-add-form" onSubmit={handleAdd}>
-          <div className="wishlist-form-row">
-            <div className="wishlist-form-field wishlist-form-url">
-              <label>URL {fetching && <span className="wishlist-fetching">Looking up product...</span>}</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Paste a product URL — we'll fill in the rest"
-                value={form.url}
-                onChange={(e) => setForm({ ...form, url: e.target.value })}
-                onBlur={(e) => handleUrlLookup(e.target.value)}
-                onPaste={(e) => {
-                  const pasted = e.clipboardData.getData('text');
-                  setTimeout(() => handleUrlLookup(pasted), 100);
-                }}
-                required
-              />
-            </div>
-            <div className="wishlist-form-field wishlist-form-name">
-              <label>Product Name</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder={fetching ? 'Loading...' : '2024 American Silver Eagle'}
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                required
-              />
-            </div>
+      {/* Toolbar — search & filters */}
+      {items.length > 0 && (
+        <div className="wishlist-toolbar">
+          <div className="wishlist-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search wishlist..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="wishlist-search-input"
+            />
+            {search && (
+              <button className="wishlist-search-clear" onClick={() => setSearch('')}>&#10005;</button>
+            )}
           </div>
-          <div className="wishlist-form-row">
-            <div className="wishlist-form-field">
-              <label>Metal</label>
-              <select
-                className="form-input"
-                value={form.metal}
-                onChange={(e) => setForm({ ...form, metal: e.target.value })}
-              >
-                <option value="">-- Optional --</option>
-                {Object.entries(METALS).map(([key, m]) => (
-                  <option key={key} value={key}>{m.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="wishlist-form-field">
-              <label>Price</label>
-              <input
-                type="number"
-                className="form-input"
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-                value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })}
-              />
-            </div>
-            <div className="wishlist-form-field wishlist-form-notes">
-              <label>Notes</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Optional notes..."
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              />
-            </div>
-            <button type="submit" className="btn btn-primary wishlist-form-submit" disabled={!form.url || !form.name}>
-              Save
+
+          <div className="wishlist-filters">
+            <button
+              className={`wishlist-filter-btn ${filterMetal === 'all' ? 'active' : ''}`}
+              onClick={() => setFilterMetal('all')}
+            >
+              All ({metalCounts.all})
             </button>
+            {Object.entries(METALS).map(([key, m]) =>
+              metalCounts[key] ? (
+                <button
+                  key={key}
+                  className={`wishlist-filter-btn ${filterMetal === key ? 'active' : ''}`}
+                  onClick={() => setFilterMetal(key)}
+                  style={filterMetal === key ? { borderColor: m.color, color: m.color } : {}}
+                >
+                  {m.name} ({metalCounts[key]})
+                </button>
+              ) : null
+            )}
           </div>
-        </form>
+        </div>
       )}
 
       {/* Items List */}
@@ -290,10 +249,7 @@ export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, 
         <div className="wishlist-empty">
           <div className="wishlist-empty-icon">&#9734;</div>
           <h3>Your wishlist is empty</h3>
-          <p>Save items you find on dealer websites to keep track of what you want to buy next.</p>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowAddForm(true)} style={{ marginTop: 12 }}>
-            + Add Your First Item
-          </button>
+          <p>Paste any product URL above and we'll automatically grab the name, price, and details.</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="wishlist-empty">
