@@ -20,11 +20,26 @@ function normalizeUrl(url) {
 
 const EMPTY_FORM = { url: '', name: '', metal: '', price: '', notes: '' };
 
+const API_BASE = import.meta.env.DEV ? '' : '';
+
+async function fetchProductInfo(url) {
+  try {
+    const res = await fetch(`${API_BASE}/api/fetch-product?url=${encodeURIComponent(url)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.found) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, onUpdate }) {
   const [search, setSearch] = useState('');
   const [filterMetal, setFilterMetal] = useState('all');
   const [showAddForm, setShowAddForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [fetching, setFetching] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -52,6 +67,23 @@ export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, 
     }
     return counts;
   }, [items]);
+
+  const handleUrlLookup = async (rawUrl) => {
+    const url = normalizeUrl(rawUrl);
+    if (!url || url.length < 10) return;
+    setFetching(true);
+    const info = await fetchProductInfo(url);
+    setFetching(false);
+    if (!info) return;
+    // Only auto-fill fields that are still empty
+    setForm((prev) => ({
+      ...prev,
+      name: prev.name || info.name || '',
+      metal: prev.metal || info.metal || '',
+      price: prev.price || (info.price ? String(info.price) : ''),
+      notes: prev.notes || (info.inStock === false ? 'Out of stock' : info.inStock === true ? 'In stock' : ''),
+    }));
+  };
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -183,13 +215,18 @@ export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, 
         <form className="wishlist-add-form" onSubmit={handleAdd}>
           <div className="wishlist-form-row">
             <div className="wishlist-form-field wishlist-form-url">
-              <label>URL</label>
+              <label>URL {fetching && <span className="wishlist-fetching">Looking up product...</span>}</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="https://www.jmbullion.com/..."
+                placeholder="Paste a product URL — we'll fill in the rest"
                 value={form.url}
                 onChange={(e) => setForm({ ...form, url: e.target.value })}
+                onBlur={(e) => handleUrlLookup(e.target.value)}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  setTimeout(() => handleUrlLookup(pasted), 100);
+                }}
                 required
               />
             </div>
@@ -198,7 +235,7 @@ export default function Wishlist({ items, tableError, onClose, onAdd, onRemove, 
               <input
                 type="text"
                 className="form-input"
-                placeholder="2024 American Silver Eagle"
+                placeholder={fetching ? 'Loading...' : '2024 American Silver Eagle'}
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 required
