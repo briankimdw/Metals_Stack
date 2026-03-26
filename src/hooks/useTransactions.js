@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { isGuest } from '../lib/guestStorage';
 
 export function useTransactions(user) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const guest = isGuest(user);
 
   const fetchTransactions = useCallback(async () => {
-    if (!user) {
+    if (!user || guest) {
       setTransactions([]);
       setLoading(false);
       return;
@@ -59,7 +61,7 @@ export function useTransactions(user) {
   }, [fetchTransactions]);
 
   const createBuyTransaction = async (holdingId) => {
-    if (!user) return;
+    if (!user || guest) return;
 
     const { data, error } = await supabase
       .from('transactions')
@@ -76,7 +78,7 @@ export function useTransactions(user) {
   };
 
   const createSellTransaction = async (holdingId, sellPrice, notes) => {
-    if (!user) return;
+    if (!user || guest) return true;
 
     const { data: holding } = await supabase
       .from('holdings')
@@ -115,7 +117,7 @@ export function useTransactions(user) {
 
   // Now accepts an array of newHoldings instead of a single one
   const createTradeTransaction = async (outHoldingIds, newHoldings, cashAdded, notes) => {
-    if (!user) return null;
+    if (!user || guest) return null;
 
     // Normalize: support both single object and array
     const holdingsArray = Array.isArray(newHoldings) ? newHoldings : [newHoldings];

@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { CapybaraWithGold } from './CapybaraMascot';
 
 export default function Login() {
-  const { signIn, signUp, signInWithGoogle } = useAuth();
+  const { signIn, signUp, signInWithGoogle, continueAsGuest } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -80,6 +80,17 @@ export default function Login() {
           <GoogleIcon />
           Continue with Google
         </button>
+
+        <div className="login-divider">
+          <span>or</span>
+        </div>
+
+        <button className="btn login-guest-btn" onClick={continueAsGuest} type="button">
+          Continue as Guest
+        </button>
+        <p className="login-guest-note">
+          Your data stays on this device only — no account needed.
+        </p>
 
         <p className="login-toggle">
           {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
