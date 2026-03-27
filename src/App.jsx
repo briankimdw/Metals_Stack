@@ -17,12 +17,13 @@ import TransactionHistory from './components/TransactionHistory';
 import TubeManager from './components/TubeManager';
 import SearchDealers from './components/SearchDealers';
 import Wishlist from './components/Wishlist';
+import ThemePicker from './components/ThemePicker';
 import Login from './components/Login';
 import { CapybaraLogo, CapybaraWave, CapybaraSleeping } from './components/CapybaraMascot';
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
-  const { holdings, addHolding, removeHolding, editHolding } = usePortfolio(user);
+  const { holdings, addHolding, removeHolding, editHolding, fetchHoldings } = usePortfolio(user);
   const { transactions, createBuyTransaction, createSellTransaction, createTradeTransaction } = useTransactions(user);
   const { prices, loading, lastUpdated, fetchPrices } = usePrices();
   const {
@@ -199,7 +200,7 @@ export default function App() {
     const success = await createSellTransaction(holdingId, sellPrice, notes);
     if (success) {
       setSellHolding(null);
-      window.location.reload();
+      await fetchHoldings();
     }
     return success;
   };
@@ -208,7 +209,7 @@ export default function App() {
     const result = await createTradeTransaction(outIds, newHoldings, cashAdded, notes);
     if (result) {
       setShowTradeModal(false);
-      window.location.reload();
+      await fetchHoldings();
     }
     return result;
   };
@@ -334,13 +335,12 @@ export default function App() {
           </button>
           <div className="header-divider" />
           <div className="header-user">
-            <div className="header-avatar">
-              {user.isGuest ? '?' : (user.email || '?')[0].toUpperCase()}
-            </div>
+            <ThemePicker onSignOut={signOut} signOutLabel={user.isGuest ? 'Exit' : 'Sign Out'}>
+              <div className="header-avatar">
+                {user.isGuest ? '?' : (user.email || '?')[0].toUpperCase()}
+              </div>
+            </ThemePicker>
             {user.isGuest && <span className="guest-label">Guest</span>}
-            <button className="btn btn-ghost btn-sm" onClick={signOut}>
-              {user.isGuest ? 'Exit' : 'Sign Out'}
-            </button>
           </div>
         </nav>
       </header>

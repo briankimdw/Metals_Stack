@@ -196,5 +196,5 @@ export function usePortfolio(user) {
     }
   };
 
-  return { holdings, loading, addHolding, removeHolding, editHolding };
+  return { holdings, loading, addHolding, removeHolding, editHolding, fetchHoldings };
 }
