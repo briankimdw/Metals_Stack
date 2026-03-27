@@ -9,6 +9,7 @@ function mapItem(row) {
     name: row.name,
     metal: row.metal || null,
     price: row.price != null ? Number(row.price) : null,
+    imageUrl: row.image_url ?? row.imageUrl ?? null,
     notes: row.notes || '',
     createdAt: row.created_at ?? row.createdAt,
   };
@@ -56,11 +57,11 @@ export function useWishlist(user) {
     fetchItems();
   }, [fetchItems]);
 
-  const addItem = async (url, name, metal, price, notes) => {
+  const addItem = async (url, name, metal, price, notes, imageUrl) => {
     if (!user) return null;
 
     if (guest) {
-      const row = guestInsert('wishlist_items', { url, name, metal: metal || null, price: price || null, notes: notes || null });
+      const row = guestInsert('wishlist_items', { url, name, metal: metal || null, price: price || null, image_url: imageUrl || null, notes: notes || null });
       const newItem = mapItem(row);
       setItems((prev) => [newItem, ...prev]);
       return newItem;
@@ -73,6 +74,7 @@ export function useWishlist(user) {
         url, name,
         metal: metal || null,
         price: price || null,
+        image_url: imageUrl || null,
         notes: notes || null,
       })
       .select()
@@ -102,6 +104,7 @@ export function useWishlist(user) {
     if (updates.name !== undefined) row.name = updates.name;
     if (updates.metal !== undefined) row.metal = updates.metal || null;
     if (updates.price !== undefined) row.price = updates.price || null;
+    if (updates.imageUrl !== undefined) row.image_url = updates.imageUrl || null;
     if (updates.notes !== undefined) row.notes = updates.notes || null;
 
     const { error } = await supabase.from('wishlist_items').update(row).eq('id', id);
