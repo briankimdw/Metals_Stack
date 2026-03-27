@@ -8,9 +8,13 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
   name       TEXT NOT NULL,
   metal      TEXT,
   price      NUMERIC,
+  image_url  TEXT,
   notes      TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- If you already ran a previous version of this migration, add the image_url column:
+-- ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS image_url TEXT;
 
 ALTER TABLE wishlist_items ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users own wishlist_items" ON wishlist_items
