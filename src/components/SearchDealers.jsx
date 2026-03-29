@@ -15,6 +15,9 @@ const DEALER_COLORS = {
   apmex: '#1A5DAB',
   providentmetals: '#2E7D32',
   herobullion: '#C62828',
+  bullionexchanges: '#1B5E20',
+  sdbullion: '#0D47A1',
+  moneymetals: '#E65100',
 };
 
 export default function SearchDealers({ prices, onClose }) {

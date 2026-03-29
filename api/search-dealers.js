@@ -168,6 +168,215 @@ async function fetchHeroBullion(query) {
     .filter((r) => r.price > 0);
 }
 
+// --- Bullion Exchanges (via Jina Reader — Cloudflare blocks direct) ---
+async function fetchBullionExchanges(query) {
+  const targetUrl = `https://www.bullionexchanges.com/?search=${encodeURIComponent(query)}`;
+  const url = `https://r.jina.ai/${targetUrl}`;
+
+  const res = await fetchWithTimeout(url, FETCH_TIMEOUT, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Accept': 'application/json',
+      'X-Return-Format': 'markdown',
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const content = data?.data?.content || '';
+  if (!content || content.length < 100) throw new Error('No content returned');
+
+  return parseBullionExchangesMarkdown(content);
+}
+
+function parseBullionExchangesMarkdown(md) {
+  const products = [];
+  // Jina returns markdown with product blocks. Parse product entries.
+  // Pattern: product image, then name with link, then price
+  const lines = md.split('\n');
+  let i = 0;
+  while (i < lines.length && products.length < 48) {
+    const line = lines[i];
+    // Look for markdown links with bullionexchanges.com URLs
+    const linkMatch = line.match(/\[([^\]]+)\]\((https:\/\/www\.bullionexchanges\.com\/[^\s)]+)\)/);
+    if (linkMatch) {
+      const title = linkMatch[1].trim();
+      const productUrl = linkMatch[2].trim();
+      // Skip navigation/category links
+      if (title.length < 10 || /^(home|about|contact|faq|shop|my account|sign|cart|menu)/i.test(title)) {
+        i++;
+        continue;
+      }
+      // Look for price in nearby lines (within 5 lines)
+      let price = 0;
+      let imageUrl = '';
+      for (let j = Math.max(0, i - 3); j < Math.min(lines.length, i + 5); j++) {
+        // Price pattern: $X,XXX.XX or $XX.XX
+        const priceMatch = lines[j].match(/\$([0-9,]+\.?\d*)/);
+        if (priceMatch && !price) {
+          price = parseFloat(priceMatch[1].replace(/,/g, ''));
+        }
+        // Image pattern
+        const imgMatch = lines[j].match(/!\[[^\]]*\]\(([^)]+)\)/);
+        if (imgMatch && !imageUrl) {
+          imageUrl = imgMatch[1];
+        }
+      }
+      if (price > 0 && !products.some(p => p.productUrl === productUrl)) {
+        products.push({
+          dealer: 'Bullion Exchanges',
+          dealerSlug: 'bullionexchanges',
+          title: decodeEntities(title),
+          price,
+          priceLabel: 'As low as',
+          productUrl,
+          imageUrl,
+          inStock: true, // Listed products are generally in stock
+          sku: '',
+        });
+      }
+    }
+    i++;
+  }
+  return products;
+}
+
+// --- SD Bullion (via Jina Reader) ---
+async function fetchSDBullion(query) {
+  const targetUrl = `https://www.sdbullion.com/catalogsearch/result/?q=${encodeURIComponent(query)}`;
+  const url = `https://r.jina.ai/${targetUrl}`;
+
+  const res = await fetchWithTimeout(url, FETCH_TIMEOUT, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Accept': 'application/json',
+      'X-Return-Format': 'markdown',
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const content = data?.data?.content || '';
+  if (!content || content.length < 100) {
+    // Check if blocked
+    if (data?.data?.warning?.includes('403')) throw new Error('Blocked by WAF');
+    throw new Error('No content returned');
+  }
+
+  return parseSDBullionMarkdown(content);
+}
+
+function parseSDBullionMarkdown(md) {
+  const products = [];
+  const lines = md.split('\n');
+  let i = 0;
+  while (i < lines.length && products.length < 48) {
+    const line = lines[i];
+    const linkMatch = line.match(/\[([^\]]+)\]\((https:\/\/(?:www\.)?sdbullion\.com\/[^\s)]+)\)/);
+    if (linkMatch) {
+      const title = linkMatch[1].trim();
+      const productUrl = linkMatch[2].trim();
+      if (title.length < 10 || /^(home|about|contact|faq|shop|sign|cart|menu|category)/i.test(title)) {
+        i++;
+        continue;
+      }
+      let price = 0;
+      let imageUrl = '';
+      for (let j = Math.max(0, i - 3); j < Math.min(lines.length, i + 5); j++) {
+        const priceMatch = lines[j].match(/\$([0-9,]+\.?\d*)/);
+        if (priceMatch && !price) {
+          price = parseFloat(priceMatch[1].replace(/,/g, ''));
+        }
+        const imgMatch = lines[j].match(/!\[[^\]]*\]\(([^)]+)\)/);
+        if (imgMatch && !imageUrl) {
+          imageUrl = imgMatch[1];
+        }
+      }
+      if (price > 0 && !products.some(p => p.productUrl === productUrl)) {
+        products.push({
+          dealer: 'SD Bullion',
+          dealerSlug: 'sdbullion',
+          title: decodeEntities(title),
+          price,
+          priceLabel: 'As low as',
+          productUrl,
+          imageUrl,
+          inStock: true,
+          sku: '',
+        });
+      }
+    }
+    i++;
+  }
+  return products;
+}
+
+// --- Money Metals (via Jina Reader) ---
+async function fetchMoneyMetals(query) {
+  const targetUrl = `https://www.moneymetals.com/search?q=${encodeURIComponent(query)}`;
+  const url = `https://r.jina.ai/${targetUrl}`;
+
+  const res = await fetchWithTimeout(url, FETCH_TIMEOUT, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Accept': 'application/json',
+      'X-Return-Format': 'markdown',
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const content = data?.data?.content || '';
+  if (!content || content.length < 100) {
+    if (data?.data?.warning?.includes('403')) throw new Error('Blocked by WAF');
+    throw new Error('No content returned');
+  }
+
+  return parseMoneyMetalsMarkdown(content);
+}
+
+function parseMoneyMetalsMarkdown(md) {
+  const products = [];
+  const lines = md.split('\n');
+  let i = 0;
+  while (i < lines.length && products.length < 48) {
+    const line = lines[i];
+    const linkMatch = line.match(/\[([^\]]+)\]\((https:\/\/(?:www\.)?moneymetals\.com\/[^\s)]+)\)/);
+    if (linkMatch) {
+      const title = linkMatch[1].trim();
+      const productUrl = linkMatch[2].trim();
+      if (title.length < 10 || /^(home|about|contact|faq|shop|sign|cart|menu|search)/i.test(title)) {
+        i++;
+        continue;
+      }
+      let price = 0;
+      let imageUrl = '';
+      for (let j = Math.max(0, i - 3); j < Math.min(lines.length, i + 5); j++) {
+        const priceMatch = lines[j].match(/\$([0-9,]+\.?\d*)/);
+        if (priceMatch && !price) {
+          price = parseFloat(priceMatch[1].replace(/,/g, ''));
+        }
+        const imgMatch = lines[j].match(/!\[[^\]]*\]\(([^)]+)\)/);
+        if (imgMatch && !imageUrl) {
+          imageUrl = imgMatch[1];
+        }
+      }
+      if (price > 0 && !products.some(p => p.productUrl === productUrl)) {
+        products.push({
+          dealer: 'Money Metals',
+          dealerSlug: 'moneymetals',
+          title: decodeEntities(title),
+          price,
+          priceLabel: 'As low as',
+          productUrl,
+          imageUrl,
+          inStock: true,
+          sku: '',
+        });
+      }
+    }
+    i++;
+  }
+  return products;
+}
+
 // ============================================================
 // HANDLER
 // ============================================================
@@ -189,6 +398,9 @@ export default async function handler(req, res) {
     { name: 'APMEX', fn: fetchAPMEX },
     { name: 'Provident Metals', fn: fetchProvidentMetals },
     { name: 'Hero Bullion', fn: fetchHeroBullion },
+    { name: 'Bullion Exchanges', fn: fetchBullionExchanges },
+    { name: 'SD Bullion', fn: fetchSDBullion },
+    { name: 'Money Metals', fn: fetchMoneyMetals },
   ];
 
   const settled = await Promise.allSettled(
