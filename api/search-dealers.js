@@ -168,23 +168,32 @@ async function fetchHeroBullion(query) {
     .filter((r) => r.price > 0);
 }
 
+// --- Jina Reader helper (separate from fetchWithTimeout to avoid browser UA) ---
+async function fetchViaJina(targetUrl) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  try {
+    const res = await fetch(`https://r.jina.ai/${targetUrl}`, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    if (!res.ok) throw new Error(`Jina HTTP ${res.status}`);
+    const data = await res.json();
+    if (data?.data?.warning?.includes('403')) throw new Error('Target site blocked (403)');
+    const content = data?.data?.content || '';
+    if (!content || content.length < 100) throw new Error('No content from Jina');
+    return content;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // --- Bullion Exchanges (via Jina Reader — Cloudflare blocks direct) ---
 async function fetchBullionExchanges(query) {
   const targetUrl = `https://www.bullionexchanges.com/?search=${encodeURIComponent(query)}`;
-  const url = `https://r.jina.ai/${targetUrl}`;
-
-  const res = await fetchWithTimeout(url, FETCH_TIMEOUT, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      'Accept': 'application/json',
-      'X-Return-Format': 'markdown',
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const content = data?.data?.content || '';
-  if (!content || content.length < 100) throw new Error('No content returned');
-
+  const content = await fetchViaJina(targetUrl);
   return parseBullionExchangesMarkdown(content);
 }
 
@@ -243,24 +252,7 @@ function parseBullionExchangesMarkdown(md) {
 // --- SD Bullion (via Jina Reader) ---
 async function fetchSDBullion(query) {
   const targetUrl = `https://www.sdbullion.com/catalogsearch/result/?q=${encodeURIComponent(query)}`;
-  const url = `https://r.jina.ai/${targetUrl}`;
-
-  const res = await fetchWithTimeout(url, FETCH_TIMEOUT, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      'Accept': 'application/json',
-      'X-Return-Format': 'markdown',
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const content = data?.data?.content || '';
-  if (!content || content.length < 100) {
-    // Check if blocked
-    if (data?.data?.warning?.includes('403')) throw new Error('Blocked by WAF');
-    throw new Error('No content returned');
-  }
-
+  const content = await fetchViaJina(targetUrl);
   return parseSDBullionMarkdown(content);
 }
 
@@ -312,23 +304,7 @@ function parseSDBullionMarkdown(md) {
 // --- Money Metals (via Jina Reader) ---
 async function fetchMoneyMetals(query) {
   const targetUrl = `https://www.moneymetals.com/search?q=${encodeURIComponent(query)}`;
-  const url = `https://r.jina.ai/${targetUrl}`;
-
-  const res = await fetchWithTimeout(url, FETCH_TIMEOUT, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      'Accept': 'application/json',
-      'X-Return-Format': 'markdown',
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const content = data?.data?.content || '';
-  if (!content || content.length < 100) {
-    if (data?.data?.warning?.includes('403')) throw new Error('Blocked by WAF');
-    throw new Error('No content returned');
-  }
-
+  const content = await fetchViaJina(targetUrl);
   return parseMoneyMetalsMarkdown(content);
 }
 
