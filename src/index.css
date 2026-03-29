@@ -305,8 +305,9 @@ body {
   white-space: nowrap;
 }
 .btn:hover { background: var(--bg-tertiary); border-color: var(--border-light); }
-.btn:active { transform: scale(0.97); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:active { transform: scale(0.96); }
+.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 .btn-ghost { background: transparent; border-color: transparent; }
 .btn-ghost:hover { background: var(--bg-card-hover); border-color: transparent; }
 .btn-ghost-danger { background: transparent; border-color: transparent; color: var(--text-muted); }
@@ -317,7 +318,8 @@ body {
   color: #0B0F19; border: none; font-weight: 700;
   box-shadow: 0 2px 8px rgba(212, 175, 55, 0.2);
 }
-.btn-primary:hover { filter: brightness(1.1); box-shadow: 0 4px 16px rgba(212, 175, 55, 0.25); }
+.btn-primary:hover { filter: brightness(1.1); box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0) scale(0.97); }
 .btn-accent {
   color: var(--accent); border-color: rgba(167,139,250,0.25);
   background: var(--accent-bg);
@@ -416,8 +418,8 @@ body {
   pointer-events: none;
 }
 .metal-card:hover {
-  border-color: var(--border-light); transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+  border-color: var(--border-light); transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 .metal-card-accent { position: absolute; top: 0; left: 0; right: 0; height: 2px; opacity: 0.8; }
 .metal-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
@@ -471,8 +473,8 @@ body {
 .th-sortable:hover { color: var(--capy-brown); }
 .th-right { text-align: right; }
 .th-actions { width: 100px; }
-.sort-icon { margin-left: 4px; font-size: 9px; opacity: 0.8; }
-.sort-icon.inactive { opacity: 0.2; }
+.sort-icon { margin-left: 4px; opacity: 0.8; vertical-align: middle; transition: transform 0.2s; }
+.sort-icon.inactive { opacity: 0.25; }
 
 .holdings-table td {
   padding: 12px 14px; font-size: 13px;
@@ -480,8 +482,9 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .holdings-table tr:last-child td { border-bottom: none; }
-.tr-clickable { cursor: pointer; transition: background 0.12s; }
-.tr-clickable:hover td { background: rgba(196,149,106,0.04); }
+.tr-clickable { cursor: pointer; transition: all 0.15s; }
+.tr-clickable:hover td { background: rgba(196,149,106,0.05); }
+.tr-clickable:hover td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
 .holding-metal { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .holding-metal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .holding-type-badge {
@@ -503,12 +506,12 @@ body {
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(10,8,6,0.8);
   backdrop-filter: blur(8px); display: flex; align-items: center;
-  justify-content: center; z-index: 1000; animation: fadeIn 0.15s;
+  justify-content: center; z-index: 1000;
 }
 .modal {
   background: var(--bg-secondary); border: 1px solid var(--border);
   border-radius: var(--radius); width: 480px; max-width: 92vw;
-  max-height: 90vh; overflow-y: auto; animation: slideUp 0.2s;
+  max-height: 90vh; overflow-y: auto;
   box-shadow: var(--shadow-lg);
 }
 .modal-header {
@@ -542,7 +545,8 @@ body {
   color: var(--text-primary); font-size: 14px; font-family: inherit;
   transition: border-color 0.15s; font-weight: 500;
 }
-.form-input:focus, .form-select:focus { outline: none; border-color: var(--border-focus); }
+.form-input:hover, .form-select:hover { border-color: var(--border-light); }
+.form-input:focus, .form-select:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.12); }
 .form-textarea { resize: vertical; min-height: 60px; line-height: 1.5; }
 .form-select {
   appearance: none; cursor: pointer;
@@ -720,7 +724,8 @@ body {
   background: linear-gradient(135deg, #FB7185, #E11D48);
   color: #fff; border: none; font-weight: 700;
 }
-.btn-sell:hover { filter: brightness(1.1); }
+.btn-sell:hover { filter: brightness(1.1); box-shadow: 0 4px 16px rgba(225, 29, 72, 0.2); transform: translateY(-1px); }
+.btn-sell:active { transform: translateY(0) scale(0.97); }
 .btn-sell-sm {
   color: var(--red); border-color: var(--red-border);
   font-size: 11px; padding: 4px 10px; background: transparent; font-weight: 600;
@@ -901,7 +906,8 @@ body {
   background: linear-gradient(135deg, #A78BFA, #7C3AED);
   color: #fff; border: none; font-weight: 700;
 }
-.btn-trade:hover { filter: brightness(1.1); }
+.btn-trade:hover { filter: brightness(1.1); box-shadow: 0 4px 16px rgba(124, 58, 237, 0.25); transform: translateY(-1px); }
+.btn-trade:active { transform: translateY(0) scale(0.97); }
 
 /* ===== TRANSACTION HISTORY ===== */
 .section-title-row {
@@ -1630,6 +1636,13 @@ body {
   margin-bottom: 12px;
 }
 
+/* ===== PAGE TRANSITION ===== */
+.page-transition { animation: pageEnter 0.25s ease-out; }
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ===== ANIMATIONS ===== */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
@@ -1922,4 +1935,83 @@ body {
   background: var(--gold); color: #1a1a2e;
   padding: 1px 6px; border-radius: 10px;
   margin-left: 2px; line-height: 1.4;
+}
+
+/* ===== NAV ACTIVE INDICATOR ===== */
+.btn-active {
+  background: var(--bg-tertiary); border-color: var(--border-light);
+  color: var(--gold); position: relative;
+}
+.btn-active::after {
+  content: ''; position: absolute; bottom: -2px; left: 20%; right: 20%;
+  height: 2px; background: var(--gold); border-radius: 1px;
+}
+
+/* ===== METAL CARD ALLOCATION BAR ===== */
+.metal-card-alloc {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.metal-card-alloc-bar {
+  flex: 1; height: 3px; background: rgba(255,255,255,0.06);
+  border-radius: 2px; overflow: hidden;
+}
+.metal-card-alloc-fill {
+  height: 100%; border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.metal-card-alloc-pct {
+  font-size: 10px; font-weight: 700; color: var(--text-muted);
+  min-width: 32px; text-align: right; font-variant-numeric: tabular-nums;
+}
+
+/* ===== SPOT PRICE FLASH ===== */
+.flash-up .spot-price { animation: priceFlashUp 1.2s; }
+.flash-down .spot-price { animation: priceFlashDown 1.2s; }
+@keyframes priceFlashUp {
+  0% { color: var(--text-primary); }
+  15% { color: var(--green); text-shadow: 0 0 8px rgba(52, 211, 153, 0.4); }
+  100% { color: var(--text-primary); text-shadow: none; }
+}
+@keyframes priceFlashDown {
+  0% { color: var(--text-primary); }
+  15% { color: var(--red); text-shadow: 0 0 8px rgba(248, 113, 113, 0.4); }
+  100% { color: var(--text-primary); text-shadow: none; }
+}
+
+/* ===== REFRESH SPIN ICON ===== */
+.spin-icon { animation: spin 0.8s linear infinite; }
+
+/* ===== TOAST NOTIFICATIONS ===== */
+.toast-container {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px; border-radius: var(--radius-sm);
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px; font-weight: 600; color: var(--text-primary);
+  pointer-events: auto; min-width: 240px; max-width: 360px;
+  backdrop-filter: blur(12px);
+}
+.toast-icon {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; flex-shrink: 0;
+}
+.toast-success .toast-icon { background: var(--green-bg); color: var(--green); }
+.toast-error .toast-icon { background: var(--red-bg); color: var(--red); }
+.toast-info .toast-icon { background: var(--accent-bg); color: var(--accent); }
+.toast-message { flex: 1; line-height: 1.4; }
+
+/* ===== TABULAR NUMS GLOBAL ===== */
+.summary-stat-value,
+.metal-card-value,
+.spot-price,
+.td-right,
+.detail-value-amount {
+  font-variant-numeric: tabular-nums;
 }
