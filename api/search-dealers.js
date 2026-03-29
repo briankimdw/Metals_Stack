@@ -199,52 +199,77 @@ async function fetchBullionExchanges(query) {
 
 function parseBullionExchangesMarkdown(md) {
   const products = [];
-  // Jina returns markdown with product blocks. Parse product entries.
-  // Pattern: product image, then name with link, then price
-  const lines = md.split('\n');
-  let i = 0;
-  while (i < lines.length && products.length < 48) {
-    const line = lines[i];
-    // Look for markdown links with bullionexchanges.com URLs
-    const linkMatch = line.match(/\[([^\]]+)\]\((https:\/\/www\.bullionexchanges\.com\/[^\s)]+)\)/);
-    if (linkMatch) {
-      const title = linkMatch[1].trim();
-      const productUrl = linkMatch[2].trim();
-      // Skip navigation/category links
-      if (title.length < 10 || /^(home|about|contact|faq|shop|my account|sign|cart|menu)/i.test(title)) {
-        i++;
-        continue;
-      }
-      // Look for price in nearby lines (within 5 lines)
-      let price = 0;
-      let imageUrl = '';
-      for (let j = Math.max(0, i - 3); j < Math.min(lines.length, i + 5); j++) {
-        // Price pattern: $X,XXX.XX or $XX.XX
-        const priceMatch = lines[j].match(/\$([0-9,]+\.?\d*)/);
-        if (priceMatch && !price) {
-          price = parseFloat(priceMatch[1].replace(/,/g, ''));
+  // Pattern in Jina markdown:
+  // [![Image N: TITLE](IMAGE_URL)](PRODUCT_URL)
+  // [TITLE](PRODUCT_URL "TITLE")
+  // As low as:$PRICE
+  const blocks = md.split(/\n\n+/);
+  for (const block of blocks) {
+    if (products.length >= 48) break;
+    // Must contain "As low as" to be a product block
+    const priceMatch = block.match(/As low as[:\s]*\$([0-9,]+\.?\d*)/i);
+    if (!priceMatch) continue;
+    const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+    if (!price || price <= 0) continue;
+
+    // Extract product URL and title from link
+    const linkMatch = block.match(/\[([^\]]{10,})\]\((https:\/\/(?:www\.)?bullionexchanges\.com\/[a-z0-9][^\s)"]+)/i);
+    if (!linkMatch) continue;
+    const title = linkMatch[1].trim();
+    const productUrl = linkMatch[2].trim();
+
+    // Skip nav/category links
+    if (/^(home|about|contact|faq|shop|sign|cart|menu|buy gold|buy silver|gold|silver|platinum)/i.test(title)) continue;
+
+    // Extract image URL
+    const imgMatch = block.match(/!\[.*?\]\((https:\/\/cdn\.bullionexchanges\.com\/[^)]+)\)/);
+    const imageUrl = imgMatch ? imgMatch[1] : '';
+
+    if (!products.some(p => p.productUrl === productUrl)) {
+      products.push({
+        dealer: 'Bullion Exchanges',
+        dealerSlug: 'bullionexchanges',
+        title: decodeEntities(title),
+        price,
+        priceLabel: 'As low as',
+        productUrl,
+        imageUrl,
+        inStock: true,
+        sku: '',
+      });
+    }
+  }
+  // Fallback: line-by-line scan if block parsing got nothing
+  if (products.length === 0) {
+    const lines = md.split('\n');
+    for (let i = 0; i < lines.length && products.length < 48; i++) {
+      const pm = lines[i].match(/As low as[:\s]*\$([0-9,]+\.?\d*)/i);
+      if (!pm) continue;
+      const price = parseFloat(pm[1].replace(/,/g, ''));
+      // Look backwards for nearest product link
+      for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
+        const lm = lines[j].match(/\[([^\]]{10,})\]\((https:\/\/(?:www\.)?bullionexchanges\.com\/[a-z0-9][^\s)"]+)/i);
+        if (lm && price > 0) {
+          const title = lm[1].trim();
+          const productUrl = lm[2].trim();
+          if (!/^(home|about|contact|faq|shop|sign|cart)/i.test(title) && !products.some(p => p.productUrl === productUrl)) {
+            const im = lines.slice(Math.max(0, j - 3), j + 1).join('\n').match(/!\[.*?\]\((https:\/\/cdn\.bullionexchanges\.com\/[^)]+)\)/);
+            products.push({
+              dealer: 'Bullion Exchanges',
+              dealerSlug: 'bullionexchanges',
+              title: decodeEntities(title),
+              price,
+              priceLabel: 'As low as',
+              productUrl,
+              imageUrl: im ? im[1] : '',
+              inStock: true,
+              sku: '',
+            });
+          }
+          break;
         }
-        // Image pattern
-        const imgMatch = lines[j].match(/!\[[^\]]*\]\(([^)]+)\)/);
-        if (imgMatch && !imageUrl) {
-          imageUrl = imgMatch[1];
-        }
-      }
-      if (price > 0 && !products.some(p => p.productUrl === productUrl)) {
-        products.push({
-          dealer: 'Bullion Exchanges',
-          dealerSlug: 'bullionexchanges',
-          title: decodeEntities(title),
-          price,
-          priceLabel: 'As low as',
-          productUrl,
-          imageUrl,
-          inStock: true, // Listed products are generally in stock
-          sku: '',
-        });
       }
     }
-    i++;
   }
   return products;
 }
