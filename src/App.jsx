@@ -1,5 +1,7 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence, useSpring, useTransform } from 'framer-motion';
+import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { usePortfolio } from './hooks/usePortfolio';
 import { useTransactions } from './hooks/useTransactions';
@@ -8,6 +10,7 @@ import { useTubes } from './hooks/useTubes';
 import { useWishlist } from './hooks/useWishlist';
 import { METALS, formatCurrency, formatPercent } from './utils/constants';
 import { filterHoldings } from './utils/coinData';
+import { useToast } from './components/Toast';
 import Charts from './components/Charts';
 import AddModal from './components/AddModal';
 import SellModal from './components/SellModal';
@@ -20,6 +23,34 @@ import Wishlist from './components/Wishlist';
 import ThemePicker from './components/ThemePicker';
 import Login from './components/Login';
 import { CapybaraLogo, CapybaraWave, CapybaraSleeping } from './components/CapybaraMascot';
+
+// Animated number component using Framer Motion spring
+function AnimatedNumber({ value, format = formatCurrency, className }) {
+  const spring = useSpring(0, { stiffness: 80, damping: 20 });
+  const display = useTransform(spring, (v) => format(v));
+  const [text, setText] = useState(format(value));
+
+  useEffect(() => {
+    spring.set(value);
+    const unsub = display.on('change', setText);
+    return unsub;
+  }, [value, spring, display]);
+
+  return <span className={className}>{text}</span>;
+}
+
+// Page transition variants
+const pageTransition = { duration: 0.2, ease: 'easeOut' };
+
+// Modal backdrop + content variants
+const overlayVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1 },
+};
+const modalVariants = {
+  hidden: { opacity: 0, scale: 0.96, y: 8 },
+  visible: { opacity: 1, scale: 1, y: 0 },
+};
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -35,22 +66,51 @@ export default function App() {
     updateItem: updateWishlistItem, removeItem: removeWishlistItem,
     tableError: wishlistTableError,
   } = useWishlist(user);
+  const toast = useToast();
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingHolding, setEditingHolding] = useState(null);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [sellHolding, setSellHolding] = useState(null);
   const [detailHolding, setDetailHolding] = useState(null);
-  const [showHistory, setShowHistory] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [sortField, setSortField] = useState('metal');
   const [sortDir, setSortDir] = useState('asc');
   const [showTubeManager, setShowTubeManager] = useState(false);
-  const [showDealerSearch, setShowDealerSearch] = useState(false);
-  const [showWishlist, setShowWishlist] = useState(false);
-  const [activeTube, setActiveTube] = useState(null); // null = show all, 'loose' = no tube, or tube id
+  const [activeTube, setActiveTube] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [dragHoldingId, setDragHoldingId] = useState(null);
   const [dragOverTube, setDragOverTube] = useState(null);
+  // Page state: 'portfolio' | 'history' | 'search' | 'wishlist'
+  const [page, setPage] = useState('portfolio');
+
+  // Spot price flash tracking
+  const prevPricesRef = useRef({});
+  const [priceFlash, setPriceFlash] = useState({});
+
+  useEffect(() => {
+    const prev = prevPricesRef.current;
+    const flashes = {};
+    let hasFlash = false;
+    for (const [key, val] of Object.entries(prices)) {
+      if (prev[key] && prev[key] !== val) {
+        flashes[key] = val > prev[key] ? 'up' : 'down';
+        hasFlash = true;
+      }
+    }
+    prevPricesRef.current = { ...prices };
+    if (hasFlash) {
+      setPriceFlash(flashes);
+      setTimeout(() => setPriceFlash({}), 1200);
+    }
+  }, [prices]);
+
+  // Scroll to top on page change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [page]);
+
+  const navigateTo = useCallback((p) => setPage(p), []);
 
   const metalSummaries = useMemo(() => {
     const summaries = {};
@@ -80,7 +140,6 @@ export default function App() {
     return { totalValue, totalCost, totalPnl, totalPnlPercent, totalOz };
   }, [metalSummaries]);
 
-  // Filter holdings by active tube and search query
   const filteredHoldings = useMemo(() => {
     let list = holdings;
     if (activeTube === 'loose') list = list.filter((h) => !h.tubeId);
@@ -123,14 +182,17 @@ export default function App() {
   };
 
   const SortIcon = ({ field }) => {
-    if (sortField !== field) return <span className="sort-icon inactive">&#8597;</span>;
-    return <span className="sort-icon">{sortDir === 'asc' ? '&#9650;' : '&#9660;'}</span>;
+    if (sortField !== field) return <ChevronsUpDown size={12} className="sort-icon inactive" />;
+    return sortDir === 'asc'
+      ? <ChevronUp size={12} className="sort-icon" />
+      : <ChevronDown size={12} className="sort-icon" />;
   };
 
   const handleAddHolding = async (holding) => {
     const created = await addHolding(holding);
     if (created) {
       await createBuyTransaction(created.id);
+      toast?.success(`Added ${holding.description || METALS[holding.metal]?.name + ' ' + holding.type}`);
     }
     setShowAddModal(false);
   };
@@ -138,16 +200,16 @@ export default function App() {
   const handleAddMultiple = async (items) => {
     for (const item of items) {
       const created = await addHolding(item);
-      if (created) {
-        await createBuyTransaction(created.id);
-      }
+      if (created) await createBuyTransaction(created.id);
     }
+    toast?.success(`Added ${items.length} holding${items.length > 1 ? 's' : ''}`);
     setShowAddModal(false);
   };
 
   const handleEditHolding = async (updates) => {
     if (!editingHolding) return;
     await editHolding(editingHolding.id, updates);
+    toast?.success('Holding updated');
     setEditingHolding(null);
   };
 
@@ -157,7 +219,9 @@ export default function App() {
 
   const confirmDelete = async () => {
     if (deleteConfirm) {
+      const name = deleteConfirm.description || `${METALS[deleteConfirm.metal]?.name} ${deleteConfirm.type}`;
       await removeHolding(deleteConfirm.id);
+      toast?.success(`Deleted ${name}`);
       setDeleteConfirm(null);
       setDetailHolding(null);
     }
@@ -165,11 +229,9 @@ export default function App() {
 
   const handleMoveToTube = async (holdingId, tubeId) => {
     await assignHoldingToTube(holdingId, tubeId);
-    // Update local state
     await editHolding(holdingId, { tubeId });
   };
 
-  // Drag and drop handlers
   const handleDragStart = (e, holdingId) => {
     setDragHoldingId(holdingId);
     e.dataTransfer.effectAllowed = 'move';
@@ -199,6 +261,7 @@ export default function App() {
   const handleSell = async (holdingId, sellPrice, notes) => {
     const success = await createSellTransaction(holdingId, sellPrice, notes);
     if (success) {
+      toast?.success(`Sold for ${formatCurrency(sellPrice)}`);
       setSellHolding(null);
       await fetchHoldings();
     }
@@ -208,6 +271,7 @@ export default function App() {
   const handleTrade = async (outIds, newHoldings, cashAdded, notes) => {
     const result = await createTradeTransaction(outIds, newHoldings, cashAdded, notes);
     if (result) {
+      toast?.success('Trade completed');
       setShowTradeModal(false);
       await fetchHoldings();
     }
@@ -234,49 +298,461 @@ export default function App() {
     return <Login />;
   }
 
-  // Full-page history view
-  if (showHistory) {
-    return (
-      <div className="app">
-        <TransactionHistory
-          transactions={transactions}
-          onClose={() => setShowHistory(false)}
-        />
-      </div>
-    );
-  }
+  // Compute total allocation for metal cards
+  const totalPortfolioValue = totals.totalValue || 1;
 
-  // Full-page dealer search view
-  if (showDealerSearch) {
-    return (
-      <div className="app">
-        <SearchDealers
-          prices={prices}
-          onClose={() => setShowDealerSearch(false)}
-        />
-      </div>
-    );
-  }
+  const renderPage = () => {
+    switch (page) {
+      case 'history':
+        return (
+          <div key="history" className="page-transition">
+            <TransactionHistory transactions={transactions} onClose={() => navigateTo('portfolio')} />
+          </div>
+        );
+      case 'search':
+        return (
+          <div key="search" className="page-transition">
+            <SearchDealers prices={prices} onClose={() => navigateTo('portfolio')} />
+          </div>
+        );
+      case 'wishlist':
+        return (
+          <div key="wishlist" className="page-transition">
+            <Wishlist
+              items={wishlistItems}
+              tableError={wishlistTableError}
+              onClose={() => navigateTo('portfolio')}
+              onAdd={addWishlistItem}
+              onRemove={removeWishlistItem}
+              onUpdate={updateWishlistItem}
+            />
+          </div>
+        );
+      default:
+        return (
+          <div key="portfolio" className="page-transition">
+            {/* Tube Table Missing Banner */}
+            {tubeTableError && (
+              <div className="setup-banner">
+                <div className="setup-banner-icon">&#9888;</div>
+                <div className="setup-banner-content">
+                  <strong>Tubes table not found</strong>
+                  <p>Run the SQL migration in your Supabase SQL Editor to enable tubes. Copy the contents of <code>sql/006_tubes.sql</code> and run it.</p>
+                </div>
+              </div>
+            )}
 
-  // Full-page wishlist view
-  if (showWishlist) {
-    return (
-      <div className="app">
-        <Wishlist
-          items={wishlistItems}
-          tableError={wishlistTableError}
-          onClose={() => setShowWishlist(false)}
-          onAdd={addWishlistItem}
-          onRemove={removeWishlistItem}
-          onUpdate={updateWishlistItem}
-        />
-      </div>
-    );
-  }
+            {/* Summary Strip */}
+            {holdings.length > 0 && (
+              <div className="summary-strip">
+                <div className="summary-stat">
+                  <span className="summary-stat-label">Portfolio Value</span>
+                  <AnimatedNumber value={totals.totalValue} className="summary-stat-value" />
+                </div>
+                <div className="summary-divider" />
+                <div className="summary-stat">
+                  <span className="summary-stat-label">Total Cost</span>
+                  <AnimatedNumber value={totals.totalCost} className="summary-stat-value dim" />
+                </div>
+                <div className="summary-divider" />
+                <div className="summary-stat">
+                  <span className="summary-stat-label">Unrealized P/L</span>
+                  <AnimatedNumber
+                    value={totals.totalPnl}
+                    format={(v) => `${v >= 0 ? '+' : ''}${formatCurrency(v)}`}
+                    className={`summary-stat-value ${totals.totalPnl >= 0 ? 'positive' : 'negative'}`}
+                  />
+                  <span className={`summary-stat-pct ${totals.totalPnl >= 0 ? 'positive' : 'negative'}`}>
+                    {formatPercent(totals.totalPnlPercent)}
+                  </span>
+                </div>
+                <div className="summary-divider" />
+                <div className="summary-stat">
+                  <span className="summary-stat-label">Holdings</span>
+                  <span className="summary-stat-value dim">{holdings.length}</span>
+                </div>
+                <div className="summary-divider" />
+                <div className="summary-stat">
+                  <span className="summary-stat-label">Total Weight</span>
+                  <span className="summary-stat-value dim">{totals.totalOz.toFixed(3)} oz</span>
+                </div>
+              </div>
+            )}
+
+            {/* Metal Cards */}
+            {holdings.length > 0 && (
+              <div className="metal-cards">
+                {Object.entries(metalSummaries)
+                  .filter(([, s]) => s.totalOz > 0)
+                  .map(([key, s]) => {
+                    const allocationPct = (s.currentValue / totalPortfolioValue) * 100;
+                    return (
+                      <div key={key} className="metal-card">
+                        <div className="metal-card-accent" style={{ background: `linear-gradient(135deg, ${s.color}, ${s.darkColor})` }} />
+                        <div className="metal-card-header">
+                          <div className="metal-card-title">
+                            <span className="metal-card-dot" style={{ background: s.color }} />
+                            <span className="metal-card-name">{s.name}</span>
+                          </div>
+                          <span className="metal-card-symbol">{s.symbol}</span>
+                        </div>
+                        <div className="metal-card-body">
+                          <AnimatedNumber value={s.currentValue} className="metal-card-value" />
+                          <div className="metal-card-meta">
+                            <span>{s.totalOz.toFixed(3)} oz</span>
+                            <span className="metal-card-sep">/</span>
+                            <span>Spot {formatCurrency(s.spotPrice)}</span>
+                          </div>
+                        </div>
+                        {/* Allocation bar */}
+                        <div className="metal-card-alloc">
+                          <div className="metal-card-alloc-bar">
+                            <div className="metal-card-alloc-fill" style={{ width: `${allocationPct}%`, background: s.color }} />
+                          </div>
+                          <span className="metal-card-alloc-pct">{allocationPct.toFixed(1)}%</span>
+                        </div>
+                        {s.totalCost > 0 && (
+                          <div className={`metal-card-pnl ${s.pnl >= 0 ? 'positive' : 'negative'}`}>
+                            {s.pnl >= 0 ? '+' : ''}{formatCurrency(s.pnl)}
+                            <span className="metal-card-pnl-pct">{formatPercent(s.pnlPercent)}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
+            {/* Charts */}
+            <Charts metalSummaries={metalSummaries} totals={totals} />
+
+            {/* Tube Stack Visual */}
+            {holdings.length > 0 && !tubeTableError && (
+              <div className="section">
+                <div className="section-header">
+                  <h2 className="section-title">Your Tubes</h2>
+                  <div className="section-header-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowTubeManager(true)}>
+                      <TubeIcon /> Manage Tubes
+                    </button>
+                  </div>
+                </div>
+
+                {tubes.length === 0 ? (
+                  <div className="tube-empty-state">
+                    <TubeIcon />
+                    <p>Organize your coins into tubes — just like real coin storage!</p>
+                    <p className="tube-empty-hint">Click <strong>Manage Tubes</strong> above to create your first tube, then drag holdings into it.</p>
+                    <button className="btn btn-primary btn-sm" onClick={() => setShowTubeManager(true)}>
+                      + Create Your First Tube
+                    </button>
+                  </div>
+                ) : (
+                  <div className="tube-stack-grid">
+                    {tubes.map((t) => {
+                      const tubeHoldings = holdings.filter((h) => h.tubeId === t.id);
+                      const count = tubeHoldings.length;
+                      const fillPct = Math.min((count / t.capacity) * 100, 100);
+                      const totalValue = tubeHoldings.reduce((sum, h) => {
+                        const spot = prices[h.metal] || METALS[h.metal].defaultPrice;
+                        return sum + h.quantity * spot;
+                      }, 0);
+                      const totalCost = tubeHoldings.reduce((sum, h) => sum + h.quantity * h.costPerOz, 0);
+                      const pnl = totalValue - totalCost;
+                      return (
+                        <div
+                          key={t.id}
+                          className={`tube-stack-card ${dragOverTube === t.id ? 'drag-over' : ''}`}
+                          onDragOver={(e) => handleTubeDragOver(e, t.id)}
+                          onDragLeave={handleTubeDragLeave}
+                          onDrop={(e) => handleTubeDrop(e, t.id)}
+                          onClick={() => setActiveTube(t.id)}
+                        >
+                          <div className="tube-stack-visual">
+                            <div className="tube-stack-cylinder" style={{ '--tube-color': t.color }}>
+                              <div className="tube-stack-cylinder-fill" style={{ height: `${fillPct}%` }} />
+                              {Array.from({ length: Math.min(count, 10) }).map((_, i) => (
+                                <div
+                                  key={i}
+                                  className="tube-stack-coin"
+                                  style={{
+                                    bottom: `${(i / t.capacity) * 100}%`,
+                                    background: METALS[tubeHoldings[i]?.metal]?.color || t.color,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div className="tube-stack-info">
+                            <div className="tube-stack-name" style={{ color: t.color }}>{t.name}</div>
+                            <div className="tube-stack-fill-text">{count} / {t.capacity}</div>
+                            <div className="tube-stack-bar">
+                              <div className="tube-stack-bar-fill" style={{ width: `${fillPct}%`, background: t.color }} />
+                            </div>
+                            <div className="tube-stack-value">
+                              {totalValue > 0 ? formatCurrency(totalValue) : '$0.00'}
+                            </div>
+                            {totalCost > 0 && (
+                              <div className={`tube-stack-pnl ${pnl >= 0 ? 'positive' : 'negative'}`}>
+                                {pnl >= 0 ? '+' : ''}{formatCurrency(pnl)}
+                              </div>
+                            )}
+                          </div>
+                          {count < t.capacity && dragHoldingId && (
+                            <div className="tube-stack-drop-hint">Drop here</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* Loose pile card */}
+                    {(() => {
+                      const looseHoldings = holdings.filter((h) => !h.tubeId);
+                      const looseValue = looseHoldings.reduce((sum, h) => {
+                        const spot = prices[h.metal] || METALS[h.metal].defaultPrice;
+                        return sum + h.quantity * spot;
+                      }, 0);
+                      return looseHoldings.length > 0 && (
+                        <div
+                          className={`tube-stack-card tube-stack-loose ${dragOverTube === 'loose' ? 'drag-over' : ''}`}
+                          onDragOver={(e) => handleTubeDragOver(e, 'loose')}
+                          onDragLeave={handleTubeDragLeave}
+                          onDrop={(e) => handleTubeDrop(e, 'loose')}
+                          onClick={() => setActiveTube('loose')}
+                        >
+                          <div className="tube-stack-visual">
+                            <div className="tube-stack-loose-pile">
+                              {looseHoldings.slice(0, 5).map((h, i) => (
+                                <div
+                                  key={h.id}
+                                  className="tube-stack-loose-coin"
+                                  style={{
+                                    background: METALS[h.metal]?.color || '#888',
+                                    transform: `rotate(${(i - 2) * 8}deg) translateY(${i * -3}px)`,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div className="tube-stack-info">
+                            <div className="tube-stack-name" style={{ color: '#888' }}>Loose</div>
+                            <div className="tube-stack-fill-text">{looseHoldings.length} items</div>
+                            <div className="tube-stack-value">{formatCurrency(looseValue)}</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {/* Quick add tube card */}
+                    <div className="tube-stack-card tube-stack-add" onClick={() => setShowTubeManager(true)}>
+                      <div className="tube-stack-add-icon">+</div>
+                      <div className="tube-stack-add-text">Add Tube</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Holdings Table */}
+            {holdings.length > 0 && (
+              <div className="section">
+                <div className="section-header">
+                  <h2 className="section-title">Holdings</h2>
+                  <span className="section-count">{filteredHoldings.length} position{filteredHoldings.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                {/* Search Bar */}
+                <div className="holdings-search">
+                  <SearchIcon />
+                  <input
+                    className="holdings-search-input"
+                    type="text"
+                    placeholder='Search... e.g. "gold eagles", "silver bars over 5oz", "2024 maple"'
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button className="holdings-search-clear" onClick={() => setSearchQuery('')}>
+                      &#10005;
+                    </button>
+                  )}
+                </div>
+
+                {/* Tube Tabs */}
+                {tubes.length > 0 && (
+                  <div className="tube-tabs">
+                    <button
+                      className={`tube-tab ${activeTube === null ? 'active' : ''}`}
+                      onClick={() => setActiveTube(null)}
+                    >
+                      All
+                      <span className="tube-tab-count">{holdings.length}</span>
+                    </button>
+                    {tubes.map((t) => {
+                      const count = holdings.filter((h) => h.tubeId === t.id).length;
+                      const fillPct = Math.min((count / t.capacity) * 100, 100);
+                      return (
+                        <button
+                          key={t.id}
+                          className={`tube-tab ${activeTube === t.id ? 'active' : ''} ${dragOverTube === t.id ? 'drag-over' : ''}`}
+                          onClick={() => setActiveTube(t.id)}
+                          onDragOver={(e) => handleTubeDragOver(e, t.id)}
+                          onDragLeave={handleTubeDragLeave}
+                          onDrop={(e) => handleTubeDrop(e, t.id)}
+                        >
+                          <span className="tube-tab-indicator" style={{ '--tube-color': t.color }}>
+                            <span className="tube-tab-fill" style={{ height: `${fillPct}%` }} />
+                          </span>
+                          {t.name}
+                          <span className="tube-tab-count">{count}/{t.capacity}</span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      className={`tube-tab ${activeTube === 'loose' ? 'active' : ''} ${dragOverTube === 'loose' ? 'drag-over' : ''}`}
+                      onClick={() => setActiveTube('loose')}
+                      onDragOver={(e) => handleTubeDragOver(e, 'loose')}
+                      onDragLeave={handleTubeDragLeave}
+                      onDrop={(e) => handleTubeDrop(e, 'loose')}
+                    >
+                      Loose
+                      <span className="tube-tab-count">{holdings.filter((h) => !h.tubeId).length}</span>
+                    </button>
+                  </div>
+                )}
+                <div className="holdings-table-wrap">
+                  <table className="holdings-table">
+                    <thead>
+                      <tr>
+                        <th onClick={() => toggleSort('metal')} className="th-sortable">
+                          Metal <SortIcon field="metal" />
+                        </th>
+                        <th onClick={() => toggleSort('type')} className="th-sortable">
+                          Type <SortIcon field="type" />
+                        </th>
+                        <th onClick={() => toggleSort('description')} className="th-sortable">
+                          Description <SortIcon field="description" />
+                        </th>
+                        <th onClick={() => toggleSort('date')} className="th-sortable">
+                          Acquired <SortIcon field="date" />
+                        </th>
+                        <th onClick={() => toggleSort('quantity')} className="th-sortable th-right">
+                          Qty (oz) <SortIcon field="quantity" />
+                        </th>
+                        <th onClick={() => toggleSort('costPerOz')} className="th-sortable th-right">
+                          Cost/oz <SortIcon field="costPerOz" />
+                        </th>
+                        <th onClick={() => toggleSort('totalCost')} className="th-sortable th-right">
+                          Cost Basis <SortIcon field="totalCost" />
+                        </th>
+                        <th onClick={() => toggleSort('value')} className="th-sortable th-right">
+                          Mkt Value <SortIcon field="value" />
+                        </th>
+                        <th onClick={() => toggleSort('pl')} className="th-sortable th-right">
+                          P/L <SortIcon field="pl" />
+                        </th>
+                        <th className="th-actions"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedHoldings.map((h) => {
+                        const metal = METALS[h.metal];
+                        const spot = prices[h.metal] || metal.defaultPrice;
+                        const tc = h.quantity * h.costPerOz;
+                        const cv = h.quantity * spot;
+                        const pl = cv - tc;
+                        const plPct = tc > 0 ? ((cv - tc) / tc) * 100 : 0;
+                        return (
+                          <tr
+                            key={h.id}
+                            className={`tr-clickable ${dragHoldingId === h.id ? 'tr-dragging' : ''}`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, h.id)}
+                            onDragEnd={handleDragEnd}
+                            onClick={() => setDetailHolding(h)}
+                          >
+                            <td>
+                              <div className="holding-metal">
+                                <span className="holding-metal-dot" style={{ background: metal.color }} />
+                                {metal.name}
+                              </div>
+                            </td>
+                            <td><span className="holding-type-badge">{h.type}</span></td>
+                            <td className="td-desc">{h.description || '---'}</td>
+                            <td className="td-date">{formatDate(h.purchaseDate)}</td>
+                            <td className="td-right">{h.quantity.toFixed(3)}</td>
+                            <td className="td-right">{formatCurrency(h.costPerOz)}</td>
+                            <td className="td-right">{formatCurrency(tc)}</td>
+                            <td className="td-right">{formatCurrency(cv)}</td>
+                            <td className="td-right">
+                              <div className="td-pl">
+                                <span className={pl >= 0 ? 'positive' : 'negative'}>
+                                  {pl >= 0 ? '+' : ''}{formatCurrency(pl)}
+                                </span>
+                                <span className={`td-pl-pct ${pl >= 0 ? 'positive' : 'negative'}`}>
+                                  {formatPercent(plPct)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="td-actions" onClick={(e) => e.stopPropagation()}>
+                              <div className="holding-actions">
+                                {tubes.length > 0 && (
+                                  <TubeDropdown
+                                    tubes={tubes}
+                                    holdings={holdings}
+                                    currentTubeId={h.tubeId}
+                                    onMove={(tubeId) => handleMoveToTube(h.id, tubeId)}
+                                  />
+                                )}
+                                <button
+                                  className="btn btn-sm btn-ghost"
+                                  onClick={() => setEditingHolding(h)}
+                                  title="Edit"
+                                >
+                                  &#9998;
+                                </button>
+                                <button className="btn btn-sm btn-sell-sm" onClick={() => setSellHolding(h)}>
+                                  Sell
+                                </button>
+                                <button
+                                  className="btn btn-sm btn-ghost-danger"
+                                  onClick={() => handleDeleteWithConfirm(h)}
+                                >
+                                  &#10005;
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {holdings.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-state-icon">
+                  <CapybaraWave size={140} />
+                </div>
+                <h3>Hey there, stacker!</h3>
+                <p>Ready to track your precious metals? Add your first coin, bar, or round and watch your stack grow!</p>
+                <button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => setShowAddModal(true)}
+                >
+                  + Add Your First Holding
+                </button>
+              </div>
+            )}
+          </div>
+        );
+    }
+  };
 
   return (
     <div className="app">
-      {/* Header */}
+      {/* Header — always visible */}
       <header className="header">
         <div className="header-brand">
           <CapybaraLogo size={36} />
@@ -292,7 +768,7 @@ export default function App() {
                 : 'Default prices'}
           </div>
           <button className="btn btn-ghost" onClick={fetchPrices} disabled={loading} title="Refresh prices">
-            <RefreshIcon />
+            <RefreshIcon spinning={loading} />
           </button>
           <div className="header-divider" />
           <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
@@ -304,8 +780,8 @@ export default function App() {
             </button>
           )}
           <button
-            className="btn btn-ghost"
-            onClick={() => setShowDealerSearch(true)}
+            className={`btn ${page === 'search' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => navigateTo(page === 'search' ? 'portfolio' : 'search')}
             title="Search dealers"
           >
             <DealerSearchIcon /> Search
@@ -318,8 +794,8 @@ export default function App() {
             <TubeIcon /> Tubes
           </button>
           <button
-            className="btn btn-ghost"
-            onClick={() => setShowWishlist(true)}
+            className={`btn ${page === 'wishlist' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => navigateTo(page === 'wishlist' ? 'portfolio' : 'wishlist')}
             title="Wishlist"
           >
             <WishlistIcon /> Wishlist
@@ -328,8 +804,8 @@ export default function App() {
             )}
           </button>
           <button
-            className={`btn ${showHistory ? 'btn-active' : 'btn-ghost'}`}
-            onClick={() => setShowHistory((v) => !v)}
+            className={`btn ${page === 'history' ? 'btn-active' : 'btn-ghost'}`}
+            onClick={() => navigateTo(page === 'history' ? 'portfolio' : 'history')}
           >
             History
           </button>
@@ -348,7 +824,7 @@ export default function App() {
       {/* Spot Prices Bar — always visible */}
       <div className="spot-bar">
         {Object.entries(metalSummaries).map(([key, s]) => (
-          <div key={key} className="spot-item">
+          <div key={key} className={`spot-item ${priceFlash[key] ? 'flash-' + priceFlash[key] : ''}`}>
             <span className="spot-dot" style={{ background: s.color }} />
             <span className="spot-name">{s.name}</span>
             <span className="spot-price">{formatCurrency(s.spotPrice)}</span>
@@ -357,524 +833,156 @@ export default function App() {
         ))}
       </div>
 
-      {/* Tube Table Missing Banner */}
-      {tubeTableError && (
-        <div className="setup-banner">
-          <div className="setup-banner-icon">&#9888;</div>
-          <div className="setup-banner-content">
-            <strong>Tubes table not found</strong>
-            <p>Run the SQL migration in your Supabase SQL Editor to enable tubes. Copy the contents of <code>sql/006_tubes.sql</code> and run it.</p>
-          </div>
-        </div>
-      )}
+      {/* Page Content */}
+      {renderPage()}
 
-      {/* Summary Strip */}
-      {holdings.length > 0 && (
-        <div className="summary-strip">
-          <div className="summary-stat">
-            <span className="summary-stat-label">Portfolio Value</span>
-            <span className="summary-stat-value">{formatCurrency(totals.totalValue)}</span>
-          </div>
-          <div className="summary-divider" />
-          <div className="summary-stat">
-            <span className="summary-stat-label">Total Cost</span>
-            <span className="summary-stat-value dim">{formatCurrency(totals.totalCost)}</span>
-          </div>
-          <div className="summary-divider" />
-          <div className="summary-stat">
-            <span className="summary-stat-label">Unrealized P/L</span>
-            <span className={`summary-stat-value ${totals.totalPnl >= 0 ? 'positive' : 'negative'}`}>
-              {totals.totalPnl >= 0 ? '+' : ''}{formatCurrency(totals.totalPnl)}
-            </span>
-            <span className={`summary-stat-pct ${totals.totalPnl >= 0 ? 'positive' : 'negative'}`}>
-              {formatPercent(totals.totalPnlPercent)}
-            </span>
-          </div>
-          <div className="summary-divider" />
-          <div className="summary-stat">
-            <span className="summary-stat-label">Holdings</span>
-            <span className="summary-stat-value dim">{holdings.length}</span>
-          </div>
-          <div className="summary-divider" />
-          <div className="summary-stat">
-            <span className="summary-stat-label">Total Weight</span>
-            <span className="summary-stat-value dim">{totals.totalOz.toFixed(3)} oz</span>
-          </div>
-        </div>
-      )}
+      {/* Modals — rendered with AnimatePresence */}
+      <AnimatePresence>
+        {showAddModal && (
+          <AddModal
+            key="add-modal"
+            onClose={() => setShowAddModal(false)}
+            onSave={handleAddHolding}
+            onSaveMultiple={handleAddMultiple}
+            prices={prices}
+            tubes={tubes}
+            holdings={holdings}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Metal Cards */}
-      {holdings.length > 0 && (
-        <div className="metal-cards">
-          {Object.entries(metalSummaries)
-            .filter(([, s]) => s.totalOz > 0)
-            .map(([key, s]) => (
-            <div key={key} className="metal-card">
-              <div className="metal-card-accent" style={{ background: `linear-gradient(135deg, ${s.color}, ${s.darkColor})` }} />
-              <div className="metal-card-header">
-                <div className="metal-card-title">
-                  <span className="metal-card-dot" style={{ background: s.color }} />
-                  <span className="metal-card-name">{s.name}</span>
-                </div>
-                <span className="metal-card-symbol">{s.symbol}</span>
-              </div>
-              <div className="metal-card-body">
-                <div className="metal-card-value">{formatCurrency(s.currentValue)}</div>
-                <div className="metal-card-meta">
-                  <span>{s.totalOz.toFixed(3)} oz</span>
-                  <span className="metal-card-sep">/</span>
-                  <span>Spot {formatCurrency(s.spotPrice)}</span>
-                </div>
-              </div>
-              {s.totalCost > 0 && (
-                <div className={`metal-card-pnl ${s.pnl >= 0 ? 'positive' : 'negative'}`}>
-                  {s.pnl >= 0 ? '+' : ''}{formatCurrency(s.pnl)}
-                  <span className="metal-card-pnl-pct">{formatPercent(s.pnlPercent)}</span>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {editingHolding && (
+          <AddModal
+            key="edit-modal"
+            editing={editingHolding}
+            onClose={() => setEditingHolding(null)}
+            onSave={handleEditHolding}
+            prices={prices}
+            tubes={tubes}
+            holdings={holdings}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Charts */}
-      <Charts metalSummaries={metalSummaries} totals={totals} />
+      <AnimatePresence>
+        {sellHolding && (
+          <SellModal
+            key="sell-modal"
+            holding={sellHolding}
+            prices={prices}
+            onClose={() => setSellHolding(null)}
+            onSell={handleSell}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Tube Stack Visual */}
-      {holdings.length > 0 && !tubeTableError && (
-        <div className="section">
-          <div className="section-header">
-            <h2 className="section-title">Your Tubes</h2>
-            <div className="section-header-actions">
-              <button className="btn btn-ghost btn-sm" onClick={() => setShowTubeManager(true)}>
-                <TubeIcon /> Manage Tubes
-              </button>
-            </div>
-          </div>
+      <AnimatePresence>
+        {showTradeModal && (
+          <TradeModal
+            key="trade-modal"
+            holdings={holdings}
+            prices={prices}
+            onClose={() => setShowTradeModal(false)}
+            onTrade={handleTrade}
+          />
+        )}
+      </AnimatePresence>
 
-          {tubes.length === 0 ? (
-            <div className="tube-empty-state">
-              <TubeIcon />
-              <p>Organize your coins into tubes — just like real coin storage!</p>
-              <p className="tube-empty-hint">Click <strong>Manage Tubes</strong> above to create your first tube, then drag holdings into it.</p>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowTubeManager(true)}>
-                + Create Your First Tube
-              </button>
-            </div>
-          ) : (
-            <div className="tube-stack-grid">
-              {tubes.map((t) => {
-                const tubeHoldings = holdings.filter((h) => h.tubeId === t.id);
-                const count = tubeHoldings.length;
-                const fillPct = Math.min((count / t.capacity) * 100, 100);
-                const totalValue = tubeHoldings.reduce((sum, h) => {
-                  const spot = prices[h.metal] || METALS[h.metal].defaultPrice;
-                  return sum + h.quantity * spot;
-                }, 0);
-                const totalCost = tubeHoldings.reduce((sum, h) => sum + h.quantity * h.costPerOz, 0);
-                const pnl = totalValue - totalCost;
-                return (
-                  <div
-                    key={t.id}
-                    className={`tube-stack-card ${dragOverTube === t.id ? 'drag-over' : ''}`}
-                    onDragOver={(e) => handleTubeDragOver(e, t.id)}
-                    onDragLeave={handleTubeDragLeave}
-                    onDrop={(e) => handleTubeDrop(e, t.id)}
-                    onClick={() => setActiveTube(t.id)}
-                  >
-                    <div className="tube-stack-visual">
-                      <div className="tube-stack-cylinder" style={{ '--tube-color': t.color }}>
-                        <div className="tube-stack-cylinder-fill" style={{ height: `${fillPct}%` }} />
-                        {Array.from({ length: Math.min(count, 10) }).map((_, i) => (
-                          <div
-                            key={i}
-                            className="tube-stack-coin"
-                            style={{
-                              bottom: `${(i / t.capacity) * 100}%`,
-                              background: METALS[tubeHoldings[i]?.metal]?.color || t.color,
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="tube-stack-info">
-                      <div className="tube-stack-name" style={{ color: t.color }}>{t.name}</div>
-                      <div className="tube-stack-fill-text">{count} / {t.capacity}</div>
-                      <div className="tube-stack-bar">
-                        <div className="tube-stack-bar-fill" style={{ width: `${fillPct}%`, background: t.color }} />
-                      </div>
-                      <div className="tube-stack-value">
-                        {totalValue > 0 ? formatCurrency(totalValue) : '$0.00'}
-                      </div>
-                      {totalCost > 0 && (
-                        <div className={`tube-stack-pnl ${pnl >= 0 ? 'positive' : 'negative'}`}>
-                          {pnl >= 0 ? '+' : ''}{formatCurrency(pnl)}
-                        </div>
-                      )}
-                    </div>
-                    {count < t.capacity && dragHoldingId && (
-                      <div className="tube-stack-drop-hint">Drop here</div>
-                    )}
-                  </div>
-                );
-              })}
-              {/* Loose pile card */}
-              {(() => {
-                const looseHoldings = holdings.filter((h) => !h.tubeId);
-                const looseValue = looseHoldings.reduce((sum, h) => {
-                  const spot = prices[h.metal] || METALS[h.metal].defaultPrice;
-                  return sum + h.quantity * spot;
-                }, 0);
-                return looseHoldings.length > 0 && (
-                  <div
-                    className={`tube-stack-card tube-stack-loose ${dragOverTube === 'loose' ? 'drag-over' : ''}`}
-                    onDragOver={(e) => handleTubeDragOver(e, 'loose')}
-                    onDragLeave={handleTubeDragLeave}
-                    onDrop={(e) => handleTubeDrop(e, 'loose')}
-                    onClick={() => setActiveTube('loose')}
-                  >
-                    <div className="tube-stack-visual">
-                      <div className="tube-stack-loose-pile">
-                        {looseHoldings.slice(0, 5).map((h, i) => (
-                          <div
-                            key={h.id}
-                            className="tube-stack-loose-coin"
-                            style={{
-                              background: METALS[h.metal]?.color || '#888',
-                              transform: `rotate(${(i - 2) * 8}deg) translateY(${i * -3}px)`,
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="tube-stack-info">
-                      <div className="tube-stack-name" style={{ color: '#888' }}>Loose</div>
-                      <div className="tube-stack-fill-text">{looseHoldings.length} items</div>
-                      <div className="tube-stack-value">{formatCurrency(looseValue)}</div>
-                    </div>
-                  </div>
-                );
-              })()}
-              {/* Quick add tube card */}
-              <div
-                className="tube-stack-card tube-stack-add"
-                onClick={() => setShowTubeManager(true)}
-              >
-                <div className="tube-stack-add-icon">+</div>
-                <div className="tube-stack-add-text">Add Tube</div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      <AnimatePresence>
+        {detailHolding && (
+          <HoldingDetail
+            key="detail-modal"
+            holding={detailHolding}
+            prices={prices}
+            tubes={tubes}
+            holdings={holdings}
+            onClose={() => setDetailHolding(null)}
+            onSell={setSellHolding}
+            onEdit={(h) => { setDetailHolding(null); setEditingHolding(h); }}
+            onDelete={handleDeleteWithConfirm}
+            onMoveToTube={(tubeId) => handleMoveToTube(detailHolding.id, tubeId)}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* Holdings Table */}
-      {holdings.length > 0 && (
-        <div className="section">
-          <div className="section-header">
-            <h2 className="section-title">Holdings</h2>
-            <span className="section-count">{filteredHoldings.length} position{filteredHoldings.length !== 1 ? 's' : ''}</span>
-          </div>
-
-          {/* Search Bar */}
-          <div className="holdings-search">
-            <SearchIcon />
-            <input
-              className="holdings-search-input"
-              type="text"
-              placeholder="Search... e.g. &quot;gold eagles&quot;, &quot;silver bars over 5oz&quot;, &quot;2024 maple&quot;"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button className="holdings-search-clear" onClick={() => setSearchQuery('')}>
-                &#10005;
-              </button>
-            )}
-          </div>
-
-          {/* Tube Tabs */}
-          {tubes.length > 0 && (
-            <div className="tube-tabs">
-              <button
-                className={`tube-tab ${activeTube === null ? 'active' : ''}`}
-                onClick={() => setActiveTube(null)}
-              >
-                All
-                <span className="tube-tab-count">{holdings.length}</span>
-              </button>
-              {tubes.map((t) => {
-                const count = holdings.filter((h) => h.tubeId === t.id).length;
-                const fillPct = Math.min((count / t.capacity) * 100, 100);
-                return (
-                  <button
-                    key={t.id}
-                    className={`tube-tab ${activeTube === t.id ? 'active' : ''} ${dragOverTube === t.id ? 'drag-over' : ''}`}
-                    onClick={() => setActiveTube(t.id)}
-                    onDragOver={(e) => handleTubeDragOver(e, t.id)}
-                    onDragLeave={handleTubeDragLeave}
-                    onDrop={(e) => handleTubeDrop(e, t.id)}
-                  >
-                    <span className="tube-tab-indicator" style={{ '--tube-color': t.color }}>
-                      <span className="tube-tab-fill" style={{ height: `${fillPct}%` }} />
-                    </span>
-                    {t.name}
-                    <span className="tube-tab-count">{count}/{t.capacity}</span>
-                  </button>
-                );
-              })}
-              <button
-                className={`tube-tab ${activeTube === 'loose' ? 'active' : ''} ${dragOverTube === 'loose' ? 'drag-over' : ''}`}
-                onClick={() => setActiveTube('loose')}
-                onDragOver={(e) => handleTubeDragOver(e, 'loose')}
-                onDragLeave={handleTubeDragLeave}
-                onDrop={(e) => handleTubeDrop(e, 'loose')}
-              >
-                Loose
-                <span className="tube-tab-count">{holdings.filter((h) => !h.tubeId).length}</span>
-              </button>
-            </div>
-          )}
-          <div className="holdings-table-wrap">
-            <table className="holdings-table">
-              <thead>
-                <tr>
-                  <th onClick={() => toggleSort('metal')} className="th-sortable">
-                    Metal <SortIcon field="metal" />
-                  </th>
-                  <th onClick={() => toggleSort('type')} className="th-sortable">
-                    Type <SortIcon field="type" />
-                  </th>
-                  <th onClick={() => toggleSort('description')} className="th-sortable">
-                    Description <SortIcon field="description" />
-                  </th>
-                  <th onClick={() => toggleSort('date')} className="th-sortable">
-                    Acquired <SortIcon field="date" />
-                  </th>
-                  <th onClick={() => toggleSort('quantity')} className="th-sortable th-right">
-                    Qty (oz) <SortIcon field="quantity" />
-                  </th>
-                  <th onClick={() => toggleSort('costPerOz')} className="th-sortable th-right">
-                    Cost/oz <SortIcon field="costPerOz" />
-                  </th>
-                  <th onClick={() => toggleSort('totalCost')} className="th-sortable th-right">
-                    Cost Basis <SortIcon field="totalCost" />
-                  </th>
-                  <th onClick={() => toggleSort('value')} className="th-sortable th-right">
-                    Mkt Value <SortIcon field="value" />
-                  </th>
-                  <th onClick={() => toggleSort('pl')} className="th-sortable th-right">
-                    P/L <SortIcon field="pl" />
-                  </th>
-                  <th className="th-actions"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedHoldings.map((h) => {
-                  const metal = METALS[h.metal];
-                  const spot = prices[h.metal] || metal.defaultPrice;
-                  const tc = h.quantity * h.costPerOz;
-                  const cv = h.quantity * spot;
-                  const pl = cv - tc;
-                  const plPct = tc > 0 ? ((cv - tc) / tc) * 100 : 0;
-                  return (
-                    <tr
-                      key={h.id}
-                      className={`tr-clickable ${dragHoldingId === h.id ? 'tr-dragging' : ''}`}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, h.id)}
-                      onDragEnd={handleDragEnd}
-                      onClick={() => setDetailHolding(h)}
-                    >
-                      <td>
-                        <div className="holding-metal">
-                          <span className="holding-metal-dot" style={{ background: metal.color }} />
-                          {metal.name}
-                        </div>
-                      </td>
-                      <td><span className="holding-type-badge">{h.type}</span></td>
-                      <td className="td-desc">{h.description || '---'}</td>
-                      <td className="td-date">{formatDate(h.purchaseDate)}</td>
-                      <td className="td-right">{h.quantity.toFixed(3)}</td>
-                      <td className="td-right">{formatCurrency(h.costPerOz)}</td>
-                      <td className="td-right">{formatCurrency(tc)}</td>
-                      <td className="td-right">{formatCurrency(cv)}</td>
-                      <td className="td-right">
-                        <div className="td-pl">
-                          <span className={pl >= 0 ? 'positive' : 'negative'}>
-                            {pl >= 0 ? '+' : ''}{formatCurrency(pl)}
-                          </span>
-                          <span className={`td-pl-pct ${pl >= 0 ? 'positive' : 'negative'}`}>
-                            {formatPercent(plPct)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="td-actions" onClick={(e) => e.stopPropagation()}>
-                        <div className="holding-actions">
-                          {tubes.length > 0 && (
-                            <TubeDropdown
-                              tubes={tubes}
-                              holdings={holdings}
-                              currentTubeId={h.tubeId}
-                              onMove={(tubeId) => handleMoveToTube(h.id, tubeId)}
-                            />
-                          )}
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            onClick={() => setEditingHolding(h)}
-                            title="Edit"
-                          >
-                            &#9998;
-                          </button>
-                          <button className="btn btn-sm btn-sell-sm" onClick={() => setSellHolding(h)}>
-                            Sell
-                          </button>
-                          <button
-                            className="btn btn-sm btn-ghost-danger"
-                            onClick={() => handleDeleteWithConfirm(h)}
-                          >
-                            &#10005;
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {holdings.length === 0 && (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <CapybaraWave size={140} />
-          </div>
-          <h3>Hey there, stacker!</h3>
-          <p>Ready to track your precious metals? Add your first coin, bar, or round and watch your stack grow!</p>
-          <button
-            className="btn btn-primary btn-lg"
-            onClick={() => setShowAddModal(true)}
-          >
-            + Add Your First Holding
-          </button>
-        </div>
-      )}
-
-      {/* Add Modal */}
-      {showAddModal && (
-        <AddModal
-          onClose={() => setShowAddModal(false)}
-          onSave={handleAddHolding}
-          onSaveMultiple={handleAddMultiple}
-          prices={prices}
-          tubes={tubes}
-          holdings={holdings}
-        />
-      )}
-
-      {/* Edit Modal */}
-      {editingHolding && (
-        <AddModal
-          editing={editingHolding}
-          onClose={() => setEditingHolding(null)}
-          onSave={handleEditHolding}
-          prices={prices}
-          tubes={tubes}
-          holdings={holdings}
-        />
-      )}
-
-      {/* Sell Modal */}
-      {sellHolding && (
-        <SellModal
-          holding={sellHolding}
-          prices={prices}
-          onClose={() => setSellHolding(null)}
-          onSell={handleSell}
-        />
-      )}
-
-      {/* Trade Modal */}
-      {showTradeModal && (
-        <TradeModal
-          holdings={holdings}
-          prices={prices}
-          onClose={() => setShowTradeModal(false)}
-          onTrade={handleTrade}
-        />
-      )}
-
-      {/* Detail Modal */}
-      {detailHolding && (
-        <HoldingDetail
-          holding={detailHolding}
-          prices={prices}
-          tubes={tubes}
-          holdings={holdings}
-          onClose={() => setDetailHolding(null)}
-          onSell={setSellHolding}
-          onEdit={(h) => { setDetailHolding(null); setEditingHolding(h); }}
-          onDelete={handleDeleteWithConfirm}
-          onMoveToTube={(tubeId) => handleMoveToTube(detailHolding.id, tubeId)}
-        />
-      )}
-
-      {/* Tube Manager */}
-      {showTubeManager && (
-        <TubeManager
-          tubes={tubes}
-          holdings={holdings}
-          onCreate={createTube}
-          onRename={renameTube}
-          onUpdateColor={updateTubeColor}
-          onUpdateCapacity={updateTubeCapacity}
-          onDelete={deleteTube}
-          onClose={() => setShowTubeManager(false)}
-        />
-      )}
+      <AnimatePresence>
+        {showTubeManager && (
+          <TubeManager
+            key="tube-modal"
+            tubes={tubes}
+            holdings={holdings}
+            onCreate={createTube}
+            onRename={renameTube}
+            onUpdateColor={updateTubeColor}
+            onUpdateCapacity={updateTubeCapacity}
+            onDelete={deleteTube}
+            onClose={() => setShowTubeManager(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
-        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setDeleteConfirm(null)}>
-          <div className="modal confirm-modal">
-            <div className="modal-header">
-              <h2>Delete Holding</h2>
-              <button className="modal-close" onClick={() => setDeleteConfirm(null)}>&#10005;</button>
-            </div>
-            <div className="modal-body">
-              <p className="confirm-text">
-                Are you sure you want to permanently delete this holding?
-              </p>
-              <div className="confirm-item">
-                <span className="confirm-item-dot" style={{ background: METALS[deleteConfirm.metal]?.color }} />
-                <div>
-                  <strong>{deleteConfirm.description || `${METALS[deleteConfirm.metal]?.name} ${deleteConfirm.type}`}</strong>
-                  <span className="confirm-item-detail">
-                    {deleteConfirm.quantity} oz &middot; {formatCurrency(deleteConfirm.quantity * deleteConfirm.costPerOz)} cost basis
-                  </span>
-                </div>
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            key="delete-overlay"
+            className="modal-overlay"
+            onClick={(e) => e.target === e.currentTarget && setDeleteConfirm(null)}
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            transition={{ duration: 0.15 }}
+          >
+            <motion.div
+              className="modal confirm-modal"
+              variants={modalVariants}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+            >
+              <div className="modal-header">
+                <h2>Delete Holding</h2>
+                <button className="modal-close" onClick={() => setDeleteConfirm(null)}>&#10005;</button>
               </div>
-              <p className="confirm-warning">This action cannot be undone.</p>
-            </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setDeleteConfirm(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={confirmDelete}>
-                Delete Permanently
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="modal-body">
+                <p className="confirm-text">
+                  Are you sure you want to permanently delete this holding?
+                </p>
+                <div className="confirm-item">
+                  <span className="confirm-item-dot" style={{ background: METALS[deleteConfirm.metal]?.color }} />
+                  <div>
+                    <strong>{deleteConfirm.description || `${METALS[deleteConfirm.metal]?.name} ${deleteConfirm.type}`}</strong>
+                    <span className="confirm-item-detail">
+                      {deleteConfirm.quantity} oz &middot; {formatCurrency(deleteConfirm.quantity * deleteConfirm.costPerOz)} cost basis
+                    </span>
+                  </div>
+                </div>
+                <p className="confirm-warning">This action cannot be undone.</p>
+              </div>
+              <div className="modal-footer">
+                <button className="btn" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={confirmDelete}>
+                  Delete Permanently
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function RefreshIcon() {
+function RefreshIcon({ spinning }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      className={spinning ? 'spin-icon' : ''}
+    >
       <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
     </svg>
   );
@@ -984,27 +1092,5 @@ function TubeDropdown({ tubes, holdings, currentTubeId, onMove }) {
         document.body
       )}
     </div>
-  );
-}
-
-function StackIcon({ large }) {
-  const size = large ? 56 : 36;
-  return (
-    <svg width={size} height={size} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="4" y="22" width="28" height="6" rx="2" fill="url(#hg1)" />
-      <rect x="6" y="15" width="24" height="6" rx="2" fill="url(#hg2)" />
-      <rect x="8" y="8" width="20" height="6" rx="2" fill="url(#hg3)" />
-      <defs>
-        <linearGradient id="hg1" x1="4" y1="22" x2="32" y2="28" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FFD700" /><stop offset="1" stopColor="#B8860B" />
-        </linearGradient>
-        <linearGradient id="hg2" x1="6" y1="15" x2="30" y2="21" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FFE44D" /><stop offset="1" stopColor="#DAA520" />
-        </linearGradient>
-        <linearGradient id="hg3" x1="8" y1="8" x2="28" y2="14" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FFF8DC" /><stop offset="1" stopColor="#FFD700" />
-        </linearGradient>
-      </defs>
-    </svg>
   );
 }
