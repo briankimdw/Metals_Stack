@@ -4,7 +4,7 @@
     "silver": 0.01,
     "platinum": 0,
     "palladium": 0,
-    "timestamp": "2026-05-13T16:13:53.097Z"
+    "timestamp": "2026-05-14T16:06:32.694Z"
   },
   "history": [
     {
@@ -359,6 +359,13 @@
     },
     {
       "date": "2026-05-13",
+      "gold": 0,
+      "silver": 0.01,
+      "platinum": 0,
+      "palladium": 0
+    },
+    {
+      "date": "2026-05-14",
       "gold": 0,
       "silver": 0.01,
       "platinum": 0,
