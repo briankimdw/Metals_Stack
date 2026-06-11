@@ -1,10 +1,10 @@
 {
   "latest": {
     "gold": 0,
-    "silver": 0.01,
+    "silver": 0.02,
     "platinum": 0,
     "palladium": 0,
-    "timestamp": "2026-06-10T16:54:29.808Z"
+    "timestamp": "2026-06-11T17:32:42.360Z"
   },
   "history": [
     {
@@ -557,6 +557,13 @@
       "date": "2026-06-10",
       "gold": 0,
       "silver": 0.01,
+      "platinum": 0,
+      "palladium": 0
+    },
+    {
+      "date": "2026-06-11",
+      "gold": 0,
+      "silver": 0.02,
       "platinum": 0,
       "palladium": 0
     }
